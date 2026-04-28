@@ -1,37 +1,204 @@
 const abcjs = window.ABCJS
-const vscode = acquireVsCodeApi()
-const main = document.querySelector("main")
-const button = document.querySelector("button")
-const abc = document.querySelector("abc").innerHTML
-const synth = new abcjs.synth.CreateSynth()
-const sheet = abcjs.renderAbc(main, abc, { responsive: "resize" })
+const preview = window.__ABC_PREVIEW__ || { abc: "", diagnostics: [] }
 
-const playMusic = async (ctx) => {
+const paper = document.querySelector("#paper")
+const playButton = document.querySelector("#play")
+const progress = document.querySelector("#progress")
+const timeLabel = document.querySelector("#time")
+const messages = document.querySelector("#messages")
+
+let audioContext = null
+let synth = null
+let timing = null
+let visualObj = null
+let isReady = false
+let isPlaying = false
+let isDragging = false
+let currentElements = []
+let totalMs = 0
+
+const renderMessages = () => {
+	const diagnostics = preview.diagnostics || []
+	messages.innerHTML = ""
+	if (!diagnostics.length) return
+
+	for (const diagnostic of diagnostics) {
+		const item = document.createElement("div")
+		item.className = `message ${diagnostic.severity === "error" ? "error" : "warning"}`
+		const location = Number.isInteger(diagnostic.line) ? `:${diagnostic.line + 1}` : ""
+		item.textContent = `${diagnostic.severity.toUpperCase()}${location} ${diagnostic.message}`
+		messages.appendChild(item)
+	}
+}
+
+const renderScore = () => {
+	try {
+		const result = abcjs.renderAbc(paper, preview.abc, {
+			responsive: "resize",
+			add_classes: true
+		})
+		visualObj = result && result[0]
+		if (!visualObj) throw new Error("abcjs did not return a visual object.")
+		createCursor()
+	} catch (err) {
+		const item = document.createElement("div")
+		item.className = "message error"
+		item.textContent = err && err.message ? err.message : String(err)
+		messages.appendChild(item)
+		disablePlayer()
+	}
+}
+
+const createCursor = () => {
+	const cursor = document.createElement("div")
+	cursor.className = "abcjs-cursor"
+	cursor.style.display = "none"
+	paper.appendChild(cursor)
+}
+
+const disablePlayer = () => {
+	playButton.disabled = true
+	progress.disabled = true
+}
+
+const ensureAudio = async () => {
+	if (isReady) return
+	audioContext = audioContext || new AudioContext()
+	await audioContext.resume()
+	synth = new abcjs.synth.CreateSynth()
 	await synth.init({
-		visualObj: sheet[0],
-		audioContext: ctx,
-		millisecondsPerMeasure: sheet[0].millisecondsPerMeasure(),
-		options: {
-			onEnded: stopMusic
-		}
+		visualObj,
+		audioContext,
+		millisecondsPerMeasure: visualObj.millisecondsPerMeasure(),
+		options: { onEnded: stop }
 	})
 	await synth.prime()
+	timing = new abcjs.TimingCallbacks(visualObj, {
+		eventCallback: onEvent,
+		beatCallback: onBeat
+	})
+	totalMs = timing.lastMoment || (synth.duration ? synth.duration * 1000 : 0)
+	timeLabel.textContent = `0:00 / ${formatTime(totalMs)}`
+	isReady = true
+}
+
+const play = async () => {
+	await ensureAudio()
+	if (isPlaying) return
 	await synth.start()
-	button.innerText = "\uea1e"
+	timing.start(currentPercent())
+	isPlaying = true
+	playButton.innerText = "\uea1e"
 }
 
-const stopMusic = async () => {
-	await synth.stop()
-	button.innerText = "\uea1c"
+const pause = async () => {
+	if (!isReady || !isPlaying) return
+	await synth.pause()
+	timing.pause()
+	isPlaying = false
+	playButton.innerText = "\uea1c"
 }
 
-button.addEventListener("click", async () => {
-	const audioCtx = new AudioContext()
-	if (button.innerText == "\uea1c") {
-		await audioCtx.resume()
-		playMusic(audioCtx)
+const stop = async () => {
+	if (timing) timing.stop()
+	if (synth) await synth.stop()
+	isPlaying = false
+	playButton.innerText = "\uea1c"
+	setProgress(0)
+	clearHighlight()
+	const cursor = document.querySelector(".abcjs-cursor")
+	if (cursor) cursor.style.display = "none"
+}
+
+const seek = async (percent) => {
+	await ensureAudio()
+	const clamped = Math.max(0, Math.min(1, percent))
+	synth.seek(clamped)
+	timing.setProgress(clamped)
+	setProgress(clamped)
+	if (isPlaying) timing.start(clamped)
+}
+
+const onBeat = (_beat, _totalBeats, lastMoment, _position, debug) => {
+	if (isDragging) return
+	totalMs = lastMoment || totalMs
+	const ms = debug && debug.timestamp && debug.startTime ? debug.timestamp - debug.startTime : timing.currentMillisecond()
+	setProgress(totalMs ? ms / totalMs : 0)
+}
+
+const onEvent = (event) => {
+	if (!event) {
+		stop()
+		return
+	}
+	showCursor(event)
+	highlightEvent(event)
+}
+
+const showCursor = (event) => {
+	const cursor = document.querySelector(".abcjs-cursor")
+	if (!cursor || event.left == null) return
+	cursor.style.display = "block"
+	cursor.style.left = `${event.left}px`
+	cursor.style.top = `${event.top}px`
+	cursor.style.width = `${Math.max(2, event.width)}px`
+	cursor.style.height = `${event.height}px`
+}
+
+const highlightEvent = (event) => {
+	clearHighlight()
+	for (const group of event.elements || []) {
+		for (const element of group || []) {
+			element.classList.add("abcjs-note_playing")
+			currentElements.push(element)
+		}
+	}
+	if (currentElements[0]) {
+		currentElements[0].scrollIntoView({ block: "center", inline: "center", behavior: "smooth" })
+	}
+}
+
+const clearHighlight = () => {
+	for (const element of currentElements) {
+		element.classList.remove("abcjs-note_playing")
+	}
+	currentElements = []
+}
+
+const setProgress = (percent) => {
+	const clamped = Math.max(0, Math.min(1, percent || 0))
+	progress.value = String(Math.round(clamped * Number(progress.max)))
+	timeLabel.textContent = `${formatTime(totalMs * clamped)} / ${formatTime(totalMs)}`
+}
+
+const currentPercent = () => {
+	return Number(progress.value) / Number(progress.max)
+}
+
+const formatTime = (ms) => {
+	const seconds = Math.max(0, Math.floor((ms || 0) / 1000))
+	const minutes = Math.floor(seconds / 60)
+	return `${minutes}:${String(seconds % 60).padStart(2, "0")}`
+}
+
+playButton.addEventListener("click", async () => {
+	if (isPlaying) {
+		await pause()
 	} else {
-		await audioCtx.close()
-		stopMusic()
+		await play()
 	}
 })
+
+progress.addEventListener("input", () => {
+	isDragging = true
+	setProgress(currentPercent())
+})
+
+progress.addEventListener("change", async () => {
+	const percent = currentPercent()
+	isDragging = false
+	await seek(percent)
+})
+
+renderMessages()
+renderScore()

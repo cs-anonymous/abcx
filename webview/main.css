@@ -8,10 +8,19 @@
 
 :root {
 	--text: hsl(0, 0, 98%);
+	--muted: hsla(0, 0%, 98%, 0.68);
+	--panel: hsla(0, 0%, 100%, 0.06);
+	--border: hsla(0, 0%, 100%, 0.14);
+	--accent: hsl(204, 92%, 58%);
+	--warning: hsl(42, 92%, 58%);
+	--error: hsl(3, 78%, 62%);
 }
 
 body.vscode-light {
 	--text: hsl(0, 0, 10%);
+	--muted: hsla(0, 0%, 10%, 0.64);
+	--panel: hsla(0, 0%, 0%, 0.045);
+	--border: hsla(0, 0%, 0%, 0.14);
 }
 
 body.vscode-dark {
@@ -22,15 +31,87 @@ body.vscode-high-contrast {
 	--text: hsl(0, 100%, 60);
 }
 
-abc {
-	display: none;
+body {
+	color: var(--text);
+	margin: 0;
+	padding: 0 0 2rem;
 }
 
 button {
     color: var(--text);
 	font-family: "IcoMoon";
 	font-size: 1.25rem;
-	margin-top: 1.25rem;
 	background: none;
-    border: none;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	min-width: 2.25rem;
+	height: 2.25rem;
+}
+
+button:disabled {
+	color: var(--muted);
+}
+
+.toolbar {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	display: grid;
+	grid-template-columns: auto minmax(8rem, 1fr) auto;
+	gap: 0.75rem;
+	align-items: center;
+	padding: 0.75rem 0;
+	background: var(--vscode-editor-background);
+	border-bottom: 1px solid var(--border);
+}
+
+#progress {
+	width: 100%;
+	accent-color: var(--accent);
+}
+
+#time {
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+#messages {
+	display: grid;
+	gap: 0.4rem;
+	margin: 0.75rem 0;
+}
+
+.message {
+	border-left: 3px solid var(--warning);
+	background: var(--panel);
+	padding: 0.5rem 0.65rem;
+	color: var(--text);
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.85rem;
+	line-height: 1.35;
+}
+
+.message.error {
+	border-left-color: var(--error);
+}
+
+#paper {
+	position: relative;
+	padding-top: 1rem;
+	overflow: auto;
+}
+
+.abcjs-cursor {
+	position: absolute;
+	z-index: 5;
+	background: hsla(204, 92%, 58%, 0.22);
+	border-left: 2px solid var(--accent);
+	pointer-events: none;
+	transition: left 80ms linear, top 80ms linear;
+}
+
+.abcjs-note_playing {
+	fill: var(--accent);
+	stroke: var(--accent);
 }

@@ -24,6 +24,12 @@
 	"engines": {
 		"vscode": "^1.76.0"
 	},
+	"activationEvents": [
+		"onLanguage:abc",
+		"onLanguage:abcx",
+		"onCommand:abc.exportMidi",
+		"onCommand:abc.showPreview"
+	],
 	"main": "src/extension.js",
 	"contributes": {
 		"languages": [
@@ -35,12 +41,26 @@
 				"extensions": [
 					".abc"
 				]
+			},
+			{
+				"id": "abcx",
+				"aliases": [
+					"ABCX"
+				],
+				"extensions": [
+					".abcx"
+				]
 			}
 		],
 		"grammars": [
 			{
 				"language": "abc",
 				"scopeName": "source.abc",
+				"path": "config/abc.tmGrammar.json"
+			},
+			{
+				"language": "abcx",
+				"scopeName": "source.abcx",
 				"path": "config/abc.tmGrammar.json"
 			}
 		],
@@ -49,7 +69,7 @@
 				"title": "Export MIDI",
 				"command": "abc.exportMidi",
 				"category": "ABC",
-				"when": "editorLangId == abc",
+				"when": "editorLangId == abc || editorLangId == abcx",
 				"icon": {
 					"light": "icons/light/new-file.svg",
 					"dark": "icons/dark/new-file.svg"
@@ -59,7 +79,7 @@
 				"title": "Show Preview",
 				"command": "abc.showPreview",
 				"category": "ABC",
-				"when": "editorLangId == abc",
+				"when": "editorLangId == abc || editorLangId == abcx",
 				"icon": {
 					"light": "icons/light/preview.svg",
 					"dark": "icons/dark/preview.svg"
@@ -70,17 +90,21 @@
 			{
 				"language": "abc",
 				"path": "config/snippets.json"
+			},
+			{
+				"language": "abcx",
+				"path": "config/snippets.json"
 			}
 		],
 		"menus": {
 			"editor/title": [
 				{
-					"when": "resourceLangId == abc",
+					"when": "resourceLangId == abc || resourceLangId == abcx",
 					"command": "abc.exportMidi",
 					"group": "navigation"
 				},
 				{
-					"when": "resourceLangId == abc",
+					"when": "resourceLangId == abc || resourceLangId == abcx",
 					"command": "abc.showPreview",
 					"group": "navigation"
 				}
