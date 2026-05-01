@@ -25,16 +25,28 @@
 		const voices = state.voices.length ? state.voices : inferVoicesFromBody(state.bodyLines)
 		const meter = parseMeter(state.fields.M || "4/4")
 		const defaultLength = parseFraction(state.fields.L || "1/8")
+		const layout = options.layout || { mode: "original" }
 
 		validateRanges(state.bodyLines, diagnostics)
 
+		let barsPerLine = null
+		if (layout.mode === "fixed") {
+			barsPerLine = layout.barsPerLine || 4
+		} else if (layout.mode === "auto") {
+			const beats = meter.numerator || 4
+			barsPerLine = Math.max(1, Math.min(6, Math.round(12 / beats)))
+		}
+
+		const linebreakChar = layout.mode === "auto" || layout.mode === "fixed" ? "!" : ""
 		const body = convertBody(state.bodyLines, voices, {
 			diagnostics,
 			meter,
-			defaultLength
+			defaultLength,
+			linebreakChar,
+			layout: { mode: layout.mode, barsPerLine }
 		})
 
-		const abc = buildAbc(state, voices, body)
+		const abc = buildAbc(state, voices, body, linebreakChar)
 
 		if (options.abcjs) {
 			try {
@@ -124,7 +136,7 @@
 		return match ? `V${match[1]}` : String(name).trim()
 	}
 
-	const buildAbc = (state, voices, body) => {
+	const buildAbc = (state, voices, body, linebreakChar) => {
 		const header = []
 		const voiceDefinitions = new Set()
 		let keyLine = null
@@ -142,8 +154,13 @@
 				keyLine = item.text
 				continue
 			}
-			const voice = trimmed.match(/^V:\s*([^\s]+)/)
-			if (voice) voiceDefinitions.add(normalizeVoiceName(voice[1]))
+			const voice = item.text.match(/^(\s*)V:\s*([^\s]+)(.*)$/)
+			if (voice) {
+				const normalized = normalizeVoiceName(voice[2])
+				voiceDefinitions.add(normalized)
+				header.push(`${voice[1]}V:${normalized}${voice[3]}`)
+				continue
+			}
 			header.push(item.text)
 		}
 
@@ -158,19 +175,26 @@
 		}
 
 		if (keyLine) header.push(keyLine)
+		if (linebreakChar) header.push(`I:linebreak <${linebreakChar}>`)
 
 		return `${header.join("\n")}\n${body.join("\n")}`.trimEnd() + "\n"
 	}
 
 	const convertBody = (bodyLines, voices, context) => {
 		const output = []
+		const linebreakChar = context.linebreakChar || ""
+		const layout = context.layout || {}
+		let barsPerLine = layout.barsPerLine || null
+		let barIndex = 0
+		let lastBreakOutputIndex = -1
+
 		for (const line of bodyLines) {
 			const text = line.text
 			if (!text.trim()) {
 				output.push("")
 				continue
 			}
-			if (/^\s*%/.test(text) || fieldRe.test(text.trim()) || text.trim().startsWith("[")) {
+			if (/^\s*%/.test(text) || fieldRe.test(text.trim()) || /^\s*\[[A-Za-z]:/.test(text)) {
 				output.push(text)
 				continue
 			}
@@ -202,6 +226,23 @@
 
 			for (let index = 0; index < voices.length; index++) {
 				output.push(`[V:${voices[index]}] ${perVoice[index].trim()}`)
+			}
+
+			const breakOutputIndex = output.length - 1
+			if (layout.mode === "original") {
+				if (linebreakChar && breakOutputIndex > lastBreakOutputIndex) {
+					output[breakOutputIndex] += linebreakChar
+					lastBreakOutputIndex = breakOutputIndex
+				}
+			} else if (barsPerLine !== null && linebreakChar) {
+				barIndex += measures.length
+				if (barIndex >= barsPerLine) {
+					barIndex = 0
+					if (breakOutputIndex > lastBreakOutputIndex) {
+						output[breakOutputIndex] += linebreakChar
+						lastBreakOutputIndex = breakOutputIndex
+					}
+				}
 			}
 		}
 		return output
@@ -468,7 +509,9 @@
 	}
 
 	const cleanAbcjsWarning = (warning) => {
-		return String(warning).replace(/^Music Line:\d+:\d+:\s*/, "")
+		return String(warning)
+			.replace(/^Music Line:\d+:\d+:\s*/, "")
+			.replace(/<[^>]+>/g, "")
 	}
 
 	return {

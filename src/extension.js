@@ -4,7 +4,7 @@ const path = require("path")
 const abcjs = require("./lib/abcjs")
 const abcx = require("./abcx")
 const uri = { script: "", styles: "", abcjs: "", abcx: "" }
-let ctx, panel, diagnostics
+let ctx, panel, diagnostics, layoutMode = "original", layoutBars = null
 
 const activate = (context) => {
 	ctx = context
@@ -32,6 +32,11 @@ const registerCommands = () => {
 		"abc.showPreview", () => showPreview()
 	)
 	ctx.subscriptions.push(show)
+
+	const smartEnter = vscode.commands.registerCommand(
+		"abcx.smartEnter", smartEnterHandler
+	)
+	ctx.subscriptions.push(smartEnter)
 }
 
 const registerEvents = () => {
@@ -53,10 +58,9 @@ const registerEvents = () => {
 	)
 }
 
-const exportMidi = () => {
-	const file = getFileName(),
-		  output = getMidiPath() + ".mid"
-	const abc = getAnalyzedContent().abc
+const exportMidi = (abc = getAnalyzedContent().abc, sourcePath = getSourceFilePath()) => {
+	const file = getFileName(sourcePath)
+	const output = getOutputPath(sourcePath, ".mid")
 	const midi = Buffer.from(
 		abcjs.synth.getMidiFile(
 			abc, {
@@ -66,19 +70,29 @@ const exportMidi = () => {
 		)[0]
 	)
 	writeFile(output, midi)
+	return output
+}
+
+const exportSvg = (svg, sourcePath = getSourceFilePath()) => {
+	if (!svg) throw new Error("No SVG content is available to export.")
+	const output = getOutputPath(sourcePath, ".svg")
+	const content = svg.startsWith("<?xml") ? svg : `<?xml version="1.0" encoding="UTF-8"?>\n${svg}\n`
+	writeFile(output, content)
+	return output
 }
 
 const showPreview = () => {
 	initializePanel()
-	const analyzed = getAnalyzedContent()
-	panel.webview.html = getWebviewContent(analyzed)
+	const document = vscode.window.activeTextEditor?.document
+	const analyzed = getAnalyzedContent(document)
+	panel.webview.html = getWebviewContent(analyzed, document)
 }
 
 const updatePanel = (document) => {
 	const activeDocument = vscode.window.activeTextEditor?.document
 	if (panel && activeDocument && document && activeDocument.uri.toString() === document.uri.toString() && isAbc(document)) {
 		const analyzed = getAnalyzedContent(document)
-		panel.webview.html = getWebviewContent(analyzed)
+		panel.webview.html = getWebviewContent(analyzed, document)
 	}
 }
 
@@ -102,6 +116,108 @@ const initializePanel = () => {
 	uri.abcx = panel.webview.asWebviewUri(
 		vscode.Uri.joinPath(ctx.extensionUri, 'src', 'abcx.js')
 	)
+	panel.webview.onDidReceiveMessage((message) => {
+		handleWebviewMessage(message)
+	}, undefined, ctx.subscriptions)
+}
+
+const handleWebviewMessage = (message) => {
+	try {
+		if (!message || !message.type) return
+		if (message.type === "exportMidi") {
+			const output = exportMidi(message.abc, message.sourcePath)
+			vscode.window.showInformationMessage(`MIDI exported to ${output}`)
+			return
+		}
+		if (message.type === "exportSvg") {
+			const output = exportSvg(message.svg, message.sourcePath)
+			vscode.window.showInformationMessage(`SVG exported to ${output}`)
+			return
+		}
+		if (message.type === "layoutChanged") {
+			layoutMode = message.mode || "original"
+			layoutBars = message.barsPerLine || null
+			const document = vscode.window.activeTextEditor?.document
+			if (document && isAbc(document)) updatePanel(document)
+		}
+	} catch (err) {
+		vscode.window.showErrorMessage(err && err.message ? err.message : String(err))
+	}
+}
+
+const isBodyLine = (document, lineIndex) => {
+	for (let i = 0; i <= lineIndex; i++) {
+		const text = document.lineAt(i).text.trim()
+		if (text.startsWith("K:")) return true
+		if (text && !text.startsWith("%") && !text.startsWith("%%") && !/^[A-Za-z]:/.test(text) && !/^\[/.test(text)) {
+			return true
+		}
+	}
+	return false
+}
+
+const findBarPositions = (text) => {
+	const bars = []
+	let i = 0
+	while (i < text.length) {
+		if (text[i] === "|") {
+			const barStart = i
+			i++
+			while (i < text.length && /[:|\]\[]/.test(text[i])) i++
+			if (i < text.length && /\d/.test(text[i])) i++
+			bars.push({ start: barStart, end: i })
+		} else {
+			i++
+		}
+	}
+	return bars
+}
+
+const smartEnterHandler = async () => {
+	const editor = vscode.window.activeTextEditor
+	if (!editor || !editor.document) return
+	const doc = editor.document
+	if (doc.languageId !== "abcx" && doc.languageId !== "abc") {
+		await vscode.commands.executeCommand("default:type", { text: "\n" })
+		return
+	}
+
+	const position = editor.selection.active
+	const line = doc.lineAt(position.line)
+	const lineText = line.text
+
+	if (lineText.trim() === "" || lineText.trim().startsWith("%")) {
+		await vscode.commands.executeCommand("default:type", { text: "\n" })
+		return
+	}
+
+	if (isBodyLine(doc, position.line)) {
+		const bars = findBarPositions(lineText)
+		if (bars.length > 0) {
+			const cursorCol = position.character
+			let closestBar = bars[0]
+			let bestDistance = Infinity
+			for (const bar of bars) {
+				const dist = Math.abs(bar.start - cursorCol)
+				if (dist < bestDistance) {
+					bestDistance = dist
+					closestBar = bar
+				}
+			}
+
+			await editor.edit((editBuilder) => {
+				if (cursorCol >= closestBar.end) {
+					const indent = lineText.slice(0, closestBar.end).match(/^(\s*)/)[1]
+					editBuilder.insert(new vscode.Position(position.line, closestBar.end), `\n${indent}`)
+				} else {
+					editBuilder.insert(new vscode.Position(position.line, closestBar.start), "\n")
+				}
+			})
+			return
+		}
+	}
+
+	await vscode.commands.executeCommand("default:type", { text: "\n" })
 }
 
 const getEditorContent = (document) => {
@@ -111,13 +227,15 @@ const getEditorContent = (document) => {
 
 const getAnalyzedContent = (document) => {
 	const content = getEditorContent(document)
-	if (abcx.isAbcx(content)) return abcx.analyze(content, { abcjs })
+	if (abcx.isAbcx(content)) return abcx.analyze(content, { abcjs, layout: { mode: layoutMode, barsPerLine: layoutBars } })
 	return analyzeAbc(content)
 }
 
-const getWebviewContent = (analyzed) => {
+const getWebviewContent = (analyzed, document) => {
 	const abc = JSON.stringify(analyzed.abc)
 	const diagnosticsJson = JSON.stringify(analyzed.diagnostics)
+	const sourcePath = JSON.stringify(getSourceFilePath(document))
+	const layoutModeJson = JSON.stringify(layoutMode)
 	return `
 		<!DOCTYPE html>
 		<html lang="en">
@@ -131,16 +249,27 @@ const getWebviewContent = (analyzed) => {
 		</head>
 		<body>
 			<section class="toolbar">
-				<button id="play" title="Play or pause">&#xea1c;</button>
+				<button id="play" class="icon-button" title="Play or pause">&#xea1c;</button>
 				<input id="progress" type="range" min="0" max="1000" value="0" step="1" title="Playback position">
 				<span id="time">0:00 / 0:00</span>
+				<select id="layout" title="Line break mode">
+					<option value="original">Original</option>
+					<option value="auto">Auto</option>
+					<option value="fixed-2">2 bars</option>
+					<option value="fixed-3">3 bars</option>
+					<option value="fixed-4">4 bars</option>
+				</select>
+				<button id="export-midi" title="Export MIDI">MID</button>
+				<button id="export-svg" title="Export SVG">SVG</button>
 			</section>
 			<section id="messages"></section>
 			<main id="paper"></main>
 			<script>
 				window.__ABC_PREVIEW__ = {
 					abc: ${abc},
-					diagnostics: ${diagnosticsJson}
+					sourcePath: ${sourcePath},
+					diagnostics: ${diagnosticsJson},
+					layoutMode: ${layoutModeJson}
 				}
 			</script>
 			<script src="${uri.script}"></script>
@@ -149,21 +278,26 @@ const getWebviewContent = (analyzed) => {
 	`
 }
 
-const getFileName = () => {
-	const path = vscode.window.activeTextEditor.document.fileName.split("\\")
-	return path[path.length - 1].split(".")[0]
+const getSourceFilePath = (document) => {
+	const filePath = (document || vscode.window.activeTextEditor?.document)?.fileName
+	if (!filePath) throw new Error("No source document is available for export.")
+	return filePath
 }
 
-const getFolderName = () => {
-	const file = getFileName()
-	const filePath = vscode.window.activeTextEditor.document.fileName
+const getFileName = (sourcePath = getSourceFilePath()) => {
+	const filePath = sourcePath
+	return path.basename(filePath, path.extname(filePath))
+}
+
+const getFolderName = (sourcePath = getSourceFilePath()) => {
+	const filePath = sourcePath
 	return path.dirname(filePath)
 }
 
-const getMidiPath = () => {
-	const file = getFileName()
-	const folder = getFolderName()
-	return path.resolve(folder, file)
+const getOutputPath = (sourcePath, extension) => {
+	const file = getFileName(sourcePath)
+	const folder = getFolderName(sourcePath)
+	return path.resolve(folder, file + extension)
 }
 
 const isAbc = (document) => {
@@ -209,7 +343,5 @@ const openFile = (filename) => {
 }
 
 const writeFile = (filename, data) => {
-	fs.writeFile(filename, data, err => {
-		if (err) return console.error(err)
-	})
+	fs.writeFileSync(filename, data)
 }

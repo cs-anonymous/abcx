@@ -1,0 +1,49 @@
+X:1
+T:Music21 Fragment
+T:Music21 Fragment
+T:Music21
+C:Music21
+%%score 1 2 3 4
+L:1/8
+M:4/4
+K:C
+V:1 treble 
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+L:1/4
+V:2 treble 
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+V:3 treble 
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+V:4 bass 
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+V:1
+ z3 E | A G F E | D2 !fermata!E B | c c B/c/4d/4 B | !fermata!A3 E | A G F E | D2 !fermata!E B | %7
+ c c B/c/4d/4 B | !fermata!A3 c | B/A/ G A B | c2 !fermata!c G | A G F/E/ F | !fermata!E3 =c | %13
+ B/c/ d c B | A2 !fermata!B E | F E D G/F/ | !fermata!E3 z |] %17
+V:2
+ z6 ED | CD DE ED DC | C2 B,A, !fermata!B,2 E2 | E2 A2 A2 ^G2 | !fermata!E6 ED | CD DE ED DC | %6
+ C2 B,A, !fermata!B,2 E2 | E2 A2 A2 ^G2 | !fermata!E6 AG | F2 ED C2 F2 | F2 ED !fermata!E2 E2 | %11
+ F2 _B,A, A,G, A,D | !fermata!^C6 D2 | D2 G2 G^F G2 | G2 ^F2 !fermata!G2 G2 | CD C2 F,2 D2 | %16
+ D2 C2 !fermata!B,2 z2 |] %17
+V:3
+ z6 ^G,2 | A,2 B,2 CD G,2 | A,^G, A,2 !fermata!G,2 G,2 | A,B, C2 F2 ED | !fermata!C6 ^G,2 | %5
+ A,2 B,2 CD G,2 | A,^G, A,2 !fermata!G,2 G,2 | A,B, C2 F2 ED | !fermata!C6 E2 | DC B,2 A,G, F,G, | %10
+ A,2 G,F, !fermata!G,2 C2 | CD E2 D^C D^G, | !fermata!A,6 A,2 | G,A, B,2 CD E2 | %14
+ E2 D2 !fermata!D2 C2 | CB, B,A, A,2 G,A, | B,2 A,2 !fermata!^G,2 z2 |] %17
+V:4
+ z6"E" E,2 |"F" F,2"G" G,2"Fmaj7/A" A,,B,,"C" C,2 |"Dm7/F" F,,4"E" !fermata!E,,2"E" E,2 | %3
+"Am" A,=G,"F" F,E,"Bm7b5/D" D,B,,"E" E,E,, |"Am" !fermata!A,,6"E" E,2 | %5
+"F" F,2"G" G,2"Fmaj7/A" A,,B,,"C" C,2 |"Dm7/F" F,,4"E" !fermata!E,,2"E" E,2 | %7
+"Am" A,=G,"F" F,E,"Bm7b5/D" D,B,,"E" E,E,, |"Am" !fermata!A,,6"Am" A,2 | %9
+"Bdim/D" D,2"Em" E,2"F" F,E,"Bdim/D" D,2 |"F/A" A,,B,,"C" C,2"C" !fermata!C,,2"C" C,2 | %11
+"F" F,E,"Em7b5/D" D,^C,"Dm" D,2"Dm" D,2 |"A" !fermata!A,,6"D7/F#" ^F,,2 | %13
+"G" G,,2"G" G,^F,"C/E" E,3 D, |"Am7/C" C,A,,"D" D,2"G" !fermata!G,,2"C" C,B,, | %15
+"F/A" A,,B,,"C" C,2"Dm7/C" C,B,,"G/B" B,,A,, |"E7/G#" ^G,,2"Am" A,,2"E" !fermata!E,,2 z2 |] %17

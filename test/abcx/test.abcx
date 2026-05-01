@@ -1,0 +1,14 @@
+X:2
+T:赋格片段
+M:4/4
+L:1/4
+K:C
+%%score (V1 V2) (V3 V4)
+V:1 name="Soprano" clef=treble
+V:2 name="Alto" clef=treble
+V:3 name="Tenor" clef=treble8
+V:4 name="Bass" clef=bass
+
+| c d e f ; e f g a ; G A B c ; C, D, E, F, |
+  g a b c' ; b c' d' e' ; d e f g ; G, A, B, C, |
+  [ce] [df] [eg] [fa] ; [eg] [fa] [gb] [ac'] ; [Bd] [ce] [df] [eg] ; [E,G,] [F,A,] [G,B,] [A,C] |]

@@ -1,0 +1,14 @@
+X:1
+T:Beethoven - Symphony No. 5, Op. 67, Allegro con brio (Excerpt)
+M:4/4
+K:C
+L:1/4
+%%score V1 | V2
+V:V1
+[V:V1] [_CG][C/_G] [B,/C/][B/C/] [A,=/B,]A,E, |
+[V:V1] [_CG][C/_G] [B,/C/][B/C/] [F,A,]E, C |
+[V:V1] [_DG][D/_G] [C,/D/][C/D/] [C,=/D,]C,E, |
+[V:V1] [_DG][D/_G] [C,/D/][C/D/] [E,/G,]C B, |
+V:V2
+[V:V2 clef=bass] C,2 C,4 | C,2 E,4 |
+[V:V2 clef=bass] C,2 C,4 | G,,2 E,4 |

@@ -1,11 +1,15 @@
 const abcjs = window.ABCJS
 const preview = window.__ABC_PREVIEW__ || { abc: "", diagnostics: [] }
+const vscode = acquireVsCodeApi()
 
 const paper = document.querySelector("#paper")
 const playButton = document.querySelector("#play")
+const exportMidiButton = document.querySelector("#export-midi")
+const exportSvgButton = document.querySelector("#export-svg")
 const progress = document.querySelector("#progress")
 const timeLabel = document.querySelector("#time")
 const messages = document.querySelector("#messages")
+const layoutSelect = document.querySelector("#layout")
 
 let audioContext = null
 let synth = null
@@ -16,6 +20,22 @@ let isPlaying = false
 let isDragging = false
 let currentElements = []
 let totalMs = 0
+
+if (layoutSelect && preview.layoutMode) {
+	const modeValue = preview.layoutMode === "auto" ? "auto" : preview.layoutMode === "fixed" ? "fixed-4" : "original"
+	layoutSelect.value = modeValue
+}
+
+layoutSelect?.addEventListener("change", () => {
+	const value = layoutSelect.value
+	let mode = value
+	let barsPerLine = null
+	if (value.startsWith("fixed-")) {
+		mode = "fixed"
+		barsPerLine = Number(value.split("-")[1])
+	}
+	vscode.postMessage({ type: "layoutChanged", mode, barsPerLine })
+})
 
 const renderMessages = () => {
 	const diagnostics = preview.diagnostics || []
@@ -33,9 +53,11 @@ const renderMessages = () => {
 
 const renderScore = () => {
 	try {
+		const foregroundColor = getComputedStyle(document.body).getPropertyValue("--text").trim()
 		const result = abcjs.renderAbc(paper, preview.abc, {
 			responsive: "resize",
-			add_classes: true
+			add_classes: true,
+			foregroundColor
 		})
 		visualObj = result && result[0]
 		if (!visualObj) throw new Error("abcjs did not return a visual object.")
@@ -59,6 +81,7 @@ const createCursor = () => {
 const disablePlayer = () => {
 	playButton.disabled = true
 	progress.disabled = true
+	exportSvgButton.disabled = true
 }
 
 const ensureAudio = async () => {
@@ -181,6 +204,27 @@ const formatTime = (ms) => {
 	return `${minutes}:${String(seconds % 60).padStart(2, "0")}`
 }
 
+const exportMidi = () => {
+	vscode.postMessage({
+		type: "exportMidi",
+		abc: preview.abc,
+		sourcePath: preview.sourcePath
+	})
+}
+
+const exportSvg = () => {
+	const svg = paper.querySelector("svg")
+	if (!svg) return
+	const clone = svg.cloneNode(true)
+	clone.setAttribute("xmlns", "http://www.w3.org/2000/svg")
+	clone.setAttribute("color", getComputedStyle(document.body).getPropertyValue("--text").trim())
+	vscode.postMessage({
+		type: "exportSvg",
+		sourcePath: preview.sourcePath,
+		svg: clone.outerHTML
+	})
+}
+
 playButton.addEventListener("click", async () => {
 	if (isPlaying) {
 		await pause()
@@ -188,6 +232,9 @@ playButton.addEventListener("click", async () => {
 		await play()
 	}
 })
+
+exportMidiButton.addEventListener("click", exportMidi)
+exportSvgButton.addEventListener("click", exportSvg)
 
 progress.addEventListener("input", () => {
 	isDragging = true

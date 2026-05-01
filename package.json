@@ -26,9 +26,7 @@
 	},
 	"activationEvents": [
 		"onLanguage:abc",
-		"onLanguage:abcx",
-		"onCommand:abc.exportMidi",
-		"onCommand:abc.showPreview"
+		"onLanguage:abcx"
 	],
 	"main": "src/extension.js",
 	"contributes": {
@@ -84,6 +82,12 @@
 					"light": "icons/light/preview.svg",
 					"dark": "icons/dark/preview.svg"
 				}
+			},
+			{
+				"title": "Smart Enter",
+				"command": "abcx.smartEnter",
+				"category": "ABCX",
+				"when": "editorLangId == abcx"
 			}
 		],
 		"snippets": [
@@ -109,6 +113,13 @@
 					"group": "navigation"
 				}
 			]
-		}
+		},
+		"keybindings": [
+			{
+				"command": "abcx.smartEnter",
+				"key": "ctrl+enter",
+				"when": "editorTextFocus && editorLangId == abcx"
+			}
+		]
 	}
 }
