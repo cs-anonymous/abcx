@@ -188,6 +188,12 @@
 		let barIndex = 0
 		let lastBreakOutputIndex = -1
 
+		let currentMeter = context.meter
+		let currentDefaultLength = context.defaultLength
+
+		const meterRe = /\[M:\s*([A-Za-z0-9/|]+)\]/g
+		const lengthRe = /\[L:\s*(\d+\/\d+)\]/g
+
 		for (const line of bodyLines) {
 			const text = line.text
 			if (!text.trim()) {
@@ -196,6 +202,11 @@
 			}
 			if (/^\s*%/.test(text) || fieldRe.test(text.trim()) || /^\s*\[[A-Za-z]:/.test(text)) {
 				output.push(text)
+				let m
+				meterRe.lastIndex = 0
+				while ((m = meterRe.exec(text))) currentMeter = parseFraction(m[1])
+				lengthRe.lastIndex = 0
+				while ((m = lengthRe.exec(text))) currentDefaultLength = parseFraction(m[1])
 				continue
 			}
 
@@ -208,6 +219,16 @@
 			const perVoice = voices.map(() => "")
 			for (const measure of measures) {
 				const parts = splitTopLevel(measure.content, ";")
+
+				// extract [M:...] and [L:...] from first voice only
+				if (parts.length > 0) {
+					let m
+					meterRe.lastIndex = 0
+					while ((m = meterRe.exec(parts[0]))) currentMeter = parseFraction(m[1])
+					lengthRe.lastIndex = 0
+					while ((m = lengthRe.exec(parts[0]))) currentDefaultLength = parseFraction(m[1])
+				}
+
 				if (parts.length !== voices.length) {
 					addDiagnostic(
 						context.diagnostics,
@@ -219,7 +240,7 @@
 				}
 				for (let index = 0; index < voices.length; index++) {
 					const content = parts[index] == null ? "" : parts[index]
-					validateMeasureDuration(content, context, line.line, measure.column, voices[index])
+					validateMeasureDuration(content, currentMeter, currentDefaultLength, context.diagnostics, line.line, measure.column, voices[index])
 					perVoice[index] += `${measure.prefix}${convertVoiceContent(content)}${measure.suffix}`
 				}
 			}
@@ -288,22 +309,22 @@
 		return stripExplicitRanges(content).trim()
 	}
 
-	const validateMeasureDuration = (content, context, line, column, voice) => {
+	const validateMeasureDuration = (content, meter, defaultLength, diagnostics, line, column, voice) => {
 		const layers = splitTopLevel(content, "&")
 		for (let layerIndex = 0; layerIndex < layers.length; layerIndex++) {
 			const layer = layers[layerIndex]
-			const duration = measureDuration(layer, context.defaultLength)
+			const duration = measureDuration(layer, defaultLength)
 			if (duration === 0 && !layer.trim()) {
-				addDiagnostic(context.diagnostics, "error", line, column, `${voice}.${layerIndex + 1} is empty; write an explicit rest.`)
+				addDiagnostic(diagnostics, "error", line, column, `${voice}.${layerIndex + 1} is empty; write an explicit rest.`)
 				continue
 			}
-			if (Math.abs(duration - context.meter) > EPSILON) {
+			if (Math.abs(duration - meter) > EPSILON) {
 				addDiagnostic(
-					context.diagnostics,
+					diagnostics,
 					"error",
 					line,
 					column,
-					`${voice}.${layerIndex + 1} duration is ${formatFraction(duration)}, expected ${formatFraction(context.meter)}.`
+					`${voice}.${layerIndex + 1} duration is ${formatFraction(duration)}, expected ${formatFraction(meter)}.`
 				)
 			}
 		}
