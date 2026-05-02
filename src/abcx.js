@@ -678,10 +678,398 @@
 			.replace(/<[^>]+>/g, "")
 	}
 
+	const abcxToAbc = (source) => {
+		if (!isAbcx(source)) return source
+		return analyze(source).abc
+	}
+
+	const gcdInt = (a, b) => {
+		a = Math.abs(a); b = Math.abs(b)
+		while (b) { const t = b; b = a % b; a = t }
+		return a || 1
+	}
+
+	const formatMultiplier = (num, den) => {
+		const g = gcdInt(num, den)
+		const n = Math.round(num / g)
+		const d = Math.round(den / g)
+		if (d === 1) return n === 1 ? "" : String(n)
+		if (n === 1 && d === 2) return "/"
+		if (n === 1) return `/${d}`
+		return `${n}/${d}`
+	}
+
+	const rewriteDurations = (content, factorNum, factorDen) => {
+		if (factorNum === factorDen) return content
+		let result = ""
+		let i = 0
+		const len = content.length
+
+		const consumeDur = (start) => {
+			const m = content.slice(start).match(/^(\d+)?(\/+)?(\d+)?/)
+			if (!m || !m[0]) return { num: 1, den: 1, end: start }
+			let num = 1, den = 1
+			if (m[1]) num = parseInt(m[1], 10)
+			if (m[2]) {
+				den = m[3] ? parseInt(m[3], 10) : Math.pow(2, m[2].length)
+			}
+			return { num, den, end: start + m[0].length }
+		}
+
+		const skipPaired = (openIdx, closeCh) => {
+			const end = content.indexOf(closeCh, openIdx + 1)
+			return end < 0 ? len : end + 1
+		}
+
+		while (i < len) {
+			const ch = content[i]
+
+			if (ch === "\"") { const e = skipPaired(i, "\""); result += content.slice(i, e); i = e; continue }
+			if (ch === "!") { const e = skipPaired(i, "!"); result += content.slice(i, e); i = e; continue }
+			if (ch === "{") { const e = skipPaired(i, "}"); result += content.slice(i, e); i = e; continue }
+
+			if (ch === "[" && /^[A-Za-z]:/.test(content.slice(i + 1, i + 3))) {
+				const e = skipPaired(i, "]")
+				result += content.slice(i, e)
+				i = e
+				continue
+			}
+			if (ch === "[") {
+				const e = skipPaired(i, "]")
+				result += content.slice(i, e)
+				i = e
+				const d = consumeDur(i)
+				result += formatMultiplier(d.num * factorNum, d.den * factorDen)
+				i = d.end
+				continue
+			}
+
+			const noteMatch = content.slice(i).match(/^((?:\^{1,2}|_{1,2}|=)?)([A-Ga-gxyz])([,']*)/)
+			if (noteMatch) {
+				result += noteMatch[0]
+				i += noteMatch[0].length
+				const d = consumeDur(i)
+				result += formatMultiplier(d.num * factorNum, d.den * factorDen)
+				i = d.end
+				continue
+			}
+
+			result += ch
+			i++
+		}
+		return result
+	}
+
+	const normalizeAbc = (source) => {
+		const normalized = (source || "").replace(/\r\n/g, "\n")
+		const lines = normalized.split("\n")
+
+		let globalL = { num: 1, den: 8 }
+		const headerLines = []
+		const bodyLines = []
+		let inBody = false
+
+		for (const line of lines) {
+			const trimmed = line.trim()
+			if (!inBody) {
+				const lm = trimmed.match(/^L:\s*(\d+)\s*\/\s*(\d+)/)
+				if (lm) globalL = { num: parseInt(lm[1], 10), den: parseInt(lm[2], 10) }
+				headerLines.push(line)
+				if (/^K:/.test(trimmed)) inBody = true
+				continue
+			}
+			bodyLines.push(line)
+		}
+
+		const voiceLs = new Map()
+		const info = []
+		let currentVoice = null
+		let currentL = { ...globalL }
+		const usedDens = new Set([globalL.den])
+
+		for (const line of bodyLines) {
+			const trimmed = line.trim()
+
+			const vm = trimmed.match(/^V:\s*(\S+)/)
+			if (vm) {
+				currentVoice = vm[1]
+				currentL = voiceLs.has(currentVoice) ? { ...voiceLs.get(currentVoice) } : { ...globalL }
+				info.push({ line, kind: "vfield" })
+				continue
+			}
+
+			const lm = trimmed.match(/^L:\s*(\d+)\s*\/\s*(\d+)/)
+			if (lm) {
+				currentL = { num: parseInt(lm[1], 10), den: parseInt(lm[2], 10) }
+				usedDens.add(currentL.den)
+				if (currentVoice) voiceLs.set(currentVoice, { ...currentL })
+				else globalL = { ...currentL }
+				info.push({ line, kind: "lfield" })
+				continue
+			}
+
+			if (!trimmed || trimmed.startsWith("%") || fieldRe.test(trimmed)) {
+				info.push({ line, kind: "field" })
+				continue
+			}
+
+			info.push({ line, kind: "music", L: { ...currentL } })
+		}
+
+		if (usedDens.size <= 1) return source
+
+		const unifiedDen = Math.max(...Array.from(usedDens))
+		const unifiedL = { num: 1, den: unifiedDen }
+
+		const outHeader = []
+		let hasL = false
+		for (const line of headerLines) {
+			const trimmed = line.trim()
+			if (/^L:/.test(trimmed)) {
+				outHeader.push(`L:${unifiedL.num}/${unifiedL.den}`)
+				hasL = true
+				continue
+			}
+			if (/^K:/.test(trimmed) && !hasL) {
+				outHeader.push(`L:${unifiedL.num}/${unifiedL.den}`)
+				hasL = true
+			}
+			outHeader.push(line)
+		}
+
+		const outBody = []
+		for (const it of info) {
+			if (it.kind === "lfield") continue
+			if (it.kind === "music") {
+				const fnum = unifiedL.den * it.L.num
+				const fden = it.L.den * unifiedL.num
+				outBody.push(rewriteDurations(it.line, fnum, fden))
+				continue
+			}
+			outBody.push(it.line)
+		}
+
+		return outHeader.join("\n") + "\n" + outBody.join("\n") + "\n"
+	}
+
+	const toStandardAbc = (source) => {
+		const abc = hasAbcxBody(source) ? analyze(source).abc : source
+		return normalizeAbc(abc)
+	}
+
+	const toStandardAbcx = (source) => {
+		if (hasAbcxBody(source)) return normalizeAbc(source)
+		return abcToAbcx(normalizeAbc(source))
+	}
+
+	const hasAbcxBody = (source) => {
+		const lines = (source || "").replace(/\r\n/g, "\n").split("\n")
+		let inBody = false
+		for (const line of lines) {
+			const trimmed = line.trim()
+			if (!inBody) {
+				if (/^K:/.test(trimmed)) inBody = true
+				continue
+			}
+			if (!trimmed || trimmed.startsWith("%") || fieldRe.test(trimmed)) continue
+			if (splitTopLevel(stripComment(trimmed), ";").length > 1) return true
+		}
+		return false
+	}
+
+	const abcToAbcx = (source) => {
+		if (hasAbcxBody(source)) return source
+
+		const normalized = (source || "").replace(/\r\n/g, "\n")
+		const allLines = normalized.split("\n")
+		const headerLines = []
+		const middleLines = []
+		const rawBody = []
+		let phase = "header"
+
+		for (const line of allLines) {
+			const trimmed = line.trim()
+			if (phase === "header") {
+				headerLines.push(line)
+				if (/^K:/.test(trimmed)) phase = "middle"
+				continue
+			}
+			if (phase === "middle") {
+				const isField = fieldRe.test(trimmed)
+				const isDirective = trimmed.startsWith("%")
+				if (!trimmed || isField || isDirective) {
+					middleLines.push(line)
+					continue
+				}
+				phase = "body"
+			}
+			rawBody.push(line)
+		}
+
+		const merged = []
+		let buffer = ""
+		for (const line of rawBody) {
+			if (/\\\s*$/.test(line)) {
+				buffer += line.replace(/\\\s*$/, " ")
+			} else {
+				merged.push(buffer + line)
+				buffer = ""
+			}
+		}
+		if (buffer) merged.push(buffer)
+
+		const voiceOrder = []
+		const voiceBars = new Map()
+		const ensureVoice = (raw) => {
+			const norm = normalizeVoiceName(raw)
+			if (!voiceBars.has(norm)) {
+				voiceOrder.push(norm)
+				voiceBars.set(norm, [])
+			}
+			return norm
+		}
+
+		for (const line of middleLines) {
+			const v = line.trim().match(/^V:\s*(\S+)/)
+			if (v) ensureVoice(v[1])
+		}
+
+		let currentVoice = voiceOrder[0] || ensureVoice("1")
+
+		for (const line of merged) {
+			const trimmed = line.trim()
+			if (!trimmed || trimmed.startsWith("%")) continue
+
+			const vField = trimmed.match(/^V:\s*(\S+)/)
+			if (vField) {
+				currentVoice = ensureVoice(vField[1])
+				continue
+			}
+
+			const inlineV = trimmed.match(/^\[V:([^\]]+)\]\s*(.*)$/)
+			let voiceName, content
+			if (inlineV) {
+				voiceName = ensureVoice(inlineV[1])
+				content = inlineV[2]
+			} else {
+				voiceName = currentVoice
+				content = trimmed
+			}
+
+			const cleaned = stripComment(content).trim()
+			if (!cleaned) continue
+			const measures = splitAbcMeasures(cleaned)
+			for (const m of measures) voiceBars.get(voiceName).push(m)
+		}
+
+		const outHeader = headerLines.slice()
+		const hasScore = outHeader.some((l) => l.trim().startsWith("%%score"))
+		if (!hasScore) {
+			let kIdx = -1
+			for (let i = outHeader.length - 1; i >= 0; i--) {
+				if (/^K:/.test(outHeader[i].trim())) { kIdx = i; break }
+			}
+			const scoreLine = `%%score ${voiceOrder.map((v) => `(${v})`).join(" ")}`
+			if (kIdx >= 0) outHeader.splice(kIdx, 0, scoreLine)
+			else outHeader.push(scoreLine)
+		}
+
+		const maxBars = Math.max(...voiceOrder.map((v) => voiceBars.get(v).length), 0)
+		const outBody = []
+		const sep = voiceOrder.length > 1 ? " ; " : ""
+
+		for (let i = 0; i < maxBars; i++) {
+			const parts = voiceOrder.map((v) => {
+				const m = voiceBars.get(v)[i]
+				return m ? m.content.trim() : "z"
+			})
+			let prefix = ""
+			let suffix = ""
+			for (const v of voiceOrder) {
+				const m = voiceBars.get(v)[i]
+				if (m) {
+					if (!prefix && m.prefix) prefix = m.prefix
+					if (!suffix && m.suffix) suffix = m.suffix
+				}
+			}
+			let row = ""
+			if (prefix) row += prefix + " "
+			row += parts.join(sep)
+			if (suffix) row += " " + suffix
+			outBody.push(row.trim())
+		}
+
+		const middleStr = middleLines.length ? middleLines.join("\n") + "\n" : ""
+		return outHeader.join("\n") + "\n" + middleStr + outBody.join("\n") + "\n"
+	}
+
+	const splitAbcMeasures = (text) => {
+		const result = []
+		let prefix = ""
+		let content = ""
+		let i = 0
+		let quote = false
+		let bracket = 0
+
+		const isBarStart = () => {
+			if (quote || bracket > 0) return false
+			const ch = text[i]
+			const next = text[i + 1] || ""
+			if (ch === "|") return true
+			if (ch === ":" && next === "|") return true
+			if (ch === "[" && next === "|") return true
+			return false
+		}
+
+		const consumeBarDelim = () => {
+			let delim = ""
+			if (text[i] === ":" || text[i] === "[") delim += text[i++]
+			if (text[i] === "|") delim += text[i++]
+			while (i < text.length && /[:|\]\[]/.test(text[i])) delim += text[i++]
+			if (i < text.length && /\d/.test(text[i])) delim += text[i++]
+			return delim
+		}
+
+		while (i < text.length) {
+			const ch = text[i]
+			if (ch === "\"") { quote = !quote; content += ch; i++; continue }
+			if (!quote) {
+				if (ch === "[" && text[i + 1] !== "|") {
+					bracket++
+					content += ch; i++; continue
+				}
+				if (ch === "]" && bracket > 0) {
+					bracket--
+					content += ch; i++; continue
+				}
+			}
+			if (isBarStart()) {
+				const delim = consumeBarDelim()
+				if (!content.trim() && !prefix) {
+					prefix = delim
+				} else {
+					result.push({ prefix, content: content.trim(), suffix: delim })
+					prefix = ""
+					content = ""
+				}
+			} else {
+				content += text[i++]
+			}
+		}
+		if (content.trim()) result.push({ prefix, content: content.trim(), suffix: "" })
+		return result
+	}
+
 	return {
 		analyze,
 		isAbcx,
+		hasAbcxBody,
 		convert: (source) => analyze(source).abc,
+		abcxToAbc,
+		abcToAbcx,
+		normalizeAbc,
+		toStandardAbc,
+		toStandardAbcx,
 		_measureDuration: measureDuration
 	}
 })

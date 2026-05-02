@@ -7,6 +7,8 @@ const playButton = document.querySelector("#play")
 const exportMidiButton = document.querySelector("#export-midi")
 const exportSvgButton = document.querySelector("#export-svg")
 const exportAbcButton = document.querySelector("#export-abc")
+const exportStdAbcButton = document.querySelector("#export-std-abc")
+const exportStdAbcxButton = document.querySelector("#export-std-abcx")
 const progress = document.querySelector("#progress")
 const timeLabel = document.querySelector("#time")
 const messages = document.querySelector("#messages")
@@ -234,6 +236,14 @@ const exportAbc = () => {
 	})
 }
 
+const exportStdAbc = () => {
+	vscode.postMessage({ type: "exportStandardAbc", sourcePath: preview.sourcePath })
+}
+
+const exportStdAbcx = () => {
+	vscode.postMessage({ type: "exportStandardAbcx", sourcePath: preview.sourcePath })
+}
+
 playButton.addEventListener("click", async () => {
 	if (isPlaying) {
 		await pause()
@@ -245,6 +255,8 @@ playButton.addEventListener("click", async () => {
 exportMidiButton.addEventListener("click", exportMidi)
 exportSvgButton.addEventListener("click", exportSvg)
 if (exportAbcButton) exportAbcButton.addEventListener("click", exportAbc)
+if (exportStdAbcButton) exportStdAbcButton.addEventListener("click", exportStdAbc)
+if (exportStdAbcxButton) exportStdAbcxButton.addEventListener("click", exportStdAbcx)
 
 progress.addEventListener("input", () => {
 	isDragging = true

@@ -87,6 +87,28 @@ const exportAbc = (abc, sourcePath = getSourceFilePath()) => {
 	return output
 }
 
+const exportStandardAbc = (sourcePath = getSourceFilePath()) => {
+	const document = previewDocument || vscode.window.activeTextEditor?.document
+	const source = (document?.getText() || "").replace(/\r\n/g, "\n")
+	const standard = abcx.toStandardAbc(source)
+	const base = path.basename(sourcePath, path.extname(sourcePath))
+	const folder = path.dirname(sourcePath)
+	const output = path.resolve(folder, `${base}.std.abc`)
+	writeFile(output, standard)
+	return output
+}
+
+const exportStandardAbcx = (sourcePath = getSourceFilePath()) => {
+	const document = previewDocument || vscode.window.activeTextEditor?.document
+	const source = (document?.getText() || "").replace(/\r\n/g, "\n")
+	const standard = abcx.toStandardAbcx(source)
+	const base = path.basename(sourcePath, path.extname(sourcePath))
+	const folder = path.dirname(sourcePath)
+	const output = path.resolve(folder, `${base}.std.abcx`)
+	writeFile(output, standard)
+	return output
+}
+
 const showPreview = () => {
 	initializePanel()
 	const document = vscode.window.activeTextEditor?.document
@@ -153,6 +175,16 @@ const handleWebviewMessage = (message) => {
 		if (message.type === "exportAbc") {
 			const output = exportAbc(message.abc, message.sourcePath)
 			vscode.window.showInformationMessage(`ABC exported to ${output}`)
+			return
+		}
+		if (message.type === "exportStandardAbc") {
+			const output = exportStandardAbc(message.sourcePath)
+			vscode.window.showInformationMessage(`Standard ABC exported to ${output}`)
+			return
+		}
+		if (message.type === "exportStandardAbcx") {
+			const output = exportStandardAbcx(message.sourcePath)
+			vscode.window.showInformationMessage(`Standard ABCX exported to ${output}`)
 			return
 		}
 		if (message.type === "layoutChanged") {
@@ -248,7 +280,11 @@ const getEditorContent = (document) => {
 
 const getAnalyzedContent = (document) => {
 	const content = getEditorContent(document)
-	if (abcx.isAbcx(content)) return abcx.analyze(content, { abcjs, layout: { mode: layoutMode, barsPerLine: layoutBars } })
+	if (abcx.hasAbcxBody(content)) {
+		const result = abcx.analyze(content, { abcjs, layout: { mode: layoutMode, barsPerLine: layoutBars } })
+		result.abc = abcx.normalizeAbc(result.abc)
+		return result
+	}
 	return analyzeAbc(content)
 }
 
@@ -287,6 +323,8 @@ const getWebviewContent = (analyzed, document) => {
 					<button id="export-abc" title="Export converted ABC">ABC</button>
 					<button id="export-midi" title="Export MIDI">MID</button>
 					<button id="export-svg" title="Export SVG">SVG</button>
+					<button id="export-std-abc" title="Export normalized ABC (unified L:)">Std ABC</button>
+					<button id="export-std-abcx" title="Export normalized ABCX (unified L:)">Std ABCX</button>
 				</section>
 			</section>
 			<section id="messages"></section>
@@ -334,9 +372,10 @@ const isAbc = (document) => {
 }
 
 const analyzeAbc = (content) => {
+	const normalized = abcx.normalizeAbc(content)
 	const diagnostics = []
 	try {
-		const parsed = abcjs.parseOnly(content)
+		const parsed = abcjs.parseOnly(normalized)
 		for (const tune of parsed || []) {
 			for (const warning of tune.warnings || []) {
 				diagnostics.push({ severity: "warning", line: 0, column: 0, message: String(warning) })
@@ -345,7 +384,7 @@ const analyzeAbc = (content) => {
 	} catch (err) {
 		diagnostics.push({ severity: "error", line: 0, column: 0, message: err && err.message ? err.message : String(err) })
 	}
-	return { abc: content, diagnostics, isAbcx: false }
+	return { abc: normalized, diagnostics, isAbcx: false }
 }
 
 const updateDiagnostics = (document) => {
