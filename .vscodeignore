@@ -1,2 +1,8 @@
 .vscode/**
 .gitignore
+node_modules/
+scripts/
+test/
+docs/
+.devcontainer/
+.eslintrc*

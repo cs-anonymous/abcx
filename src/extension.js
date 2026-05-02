@@ -4,7 +4,7 @@ const path = require("path")
 const abcjs = require("./lib/abcjs")
 const abcx = require("./abcx")
 const uri = { script: "", styles: "", abcjs: "", abcx: "" }
-let ctx, panel, diagnostics, layoutMode = "original", layoutBars = null
+let ctx, panel, diagnostics, layoutMode = "original", layoutBars = null, previewDocument = null
 
 const activate = (context) => {
 	ctx = context
@@ -81,9 +81,22 @@ const exportSvg = (svg, sourcePath = getSourceFilePath()) => {
 	return output
 }
 
+const exportAbc = (abc, sourcePath = getSourceFilePath()) => {
+	const output = getOutputPath(sourcePath, ".abc")
+	writeFile(output, abc)
+	return output
+}
+
 const showPreview = () => {
 	initializePanel()
 	const document = vscode.window.activeTextEditor?.document
+	previewDocument = document || previewDocument
+	const analyzed = getAnalyzedContent(document)
+	panel.webview.html = getWebviewContent(analyzed, document)
+}
+
+const renderPanel = (document) => {
+	if (!panel || !document) return
 	const analyzed = getAnalyzedContent(document)
 	panel.webview.html = getWebviewContent(analyzed, document)
 }
@@ -91,8 +104,7 @@ const showPreview = () => {
 const updatePanel = (document) => {
 	const activeDocument = vscode.window.activeTextEditor?.document
 	if (panel && activeDocument && document && activeDocument.uri.toString() === document.uri.toString() && isAbc(document)) {
-		const analyzed = getAnalyzedContent(document)
-		panel.webview.html = getWebviewContent(analyzed, document)
+		renderPanel(document)
 	}
 }
 
@@ -119,6 +131,10 @@ const initializePanel = () => {
 	panel.webview.onDidReceiveMessage((message) => {
 		handleWebviewMessage(message)
 	}, undefined, ctx.subscriptions)
+	panel.onDidDispose(() => {
+		panel = null
+		previewDocument = null
+	}, undefined, ctx.subscriptions)
 }
 
 const handleWebviewMessage = (message) => {
@@ -134,11 +150,16 @@ const handleWebviewMessage = (message) => {
 			vscode.window.showInformationMessage(`SVG exported to ${output}`)
 			return
 		}
+		if (message.type === "exportAbc") {
+			const output = exportAbc(message.abc, message.sourcePath)
+			vscode.window.showInformationMessage(`ABC exported to ${output}`)
+			return
+		}
 		if (message.type === "layoutChanged") {
 			layoutMode = message.mode || "original"
 			layoutBars = message.barsPerLine || null
-			const document = vscode.window.activeTextEditor?.document
-			if (document && isAbc(document)) updatePanel(document)
+			const document = previewDocument || vscode.window.activeTextEditor?.document
+			if (document && isAbc(document)) renderPanel(document)
 		}
 	} catch (err) {
 		vscode.window.showErrorMessage(err && err.message ? err.message : String(err))
@@ -236,6 +257,7 @@ const getWebviewContent = (analyzed, document) => {
 	const diagnosticsJson = JSON.stringify(analyzed.diagnostics)
 	const sourcePath = JSON.stringify(getSourceFilePath(document))
 	const layoutModeJson = JSON.stringify(layoutMode)
+	const isAbcx = JSON.stringify(analyzed.isAbcx)
 	return `
 		<!DOCTYPE html>
 		<html lang="en">
@@ -249,18 +271,23 @@ const getWebviewContent = (analyzed, document) => {
 		</head>
 		<body>
 			<section class="toolbar">
-				<button id="play" class="icon-button" title="Play or pause">&#xea1c;</button>
-				<input id="progress" type="range" min="0" max="1000" value="0" step="1" title="Playback position">
-				<span id="time">0:00 / 0:00</span>
-				<select id="layout" title="Line break mode">
-					<option value="original">Original</option>
-					<option value="auto">Auto</option>
-					<option value="fixed-2">2 bars</option>
-					<option value="fixed-3">3 bars</option>
-					<option value="fixed-4">4 bars</option>
-				</select>
-				<button id="export-midi" title="Export MIDI">MID</button>
-				<button id="export-svg" title="Export SVG">SVG</button>
+				<section class="toolbar-row">
+					<button id="play" class="icon-button" title="Play or pause">&#xea1c;</button>
+					<input id="progress" type="range" min="0" max="1000" value="0" step="1" title="Playback position">
+					<span id="time">0:00 / 0:00</span>
+				</section>
+				<section class="toolbar-row">
+					<select id="layout" title="Line break mode">
+						<option value="original">Original</option>
+						<option value="auto">Auto</option>
+						<option value="fixed-2">2 bars</option>
+						<option value="fixed-3">3 bars</option>
+						<option value="fixed-4">4 bars</option>
+					</select>
+					<button id="export-abc" title="Export converted ABC">ABC</button>
+					<button id="export-midi" title="Export MIDI">MID</button>
+					<button id="export-svg" title="Export SVG">SVG</button>
+				</section>
 			</section>
 			<section id="messages"></section>
 			<main id="paper"></main>
@@ -269,7 +296,8 @@ const getWebviewContent = (analyzed, document) => {
 					abc: ${abc},
 					sourcePath: ${sourcePath},
 					diagnostics: ${diagnosticsJson},
-					layoutMode: ${layoutModeJson}
+					layoutMode: ${layoutModeJson},
+					isAbcx: ${isAbcx}
 				}
 			</script>
 			<script src="${uri.script}"></script>

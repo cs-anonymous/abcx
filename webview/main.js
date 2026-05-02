@@ -6,6 +6,7 @@ const paper = document.querySelector("#paper")
 const playButton = document.querySelector("#play")
 const exportMidiButton = document.querySelector("#export-midi")
 const exportSvgButton = document.querySelector("#export-svg")
+const exportAbcButton = document.querySelector("#export-abc")
 const progress = document.querySelector("#progress")
 const timeLabel = document.querySelector("#time")
 const messages = document.querySelector("#messages")
@@ -225,6 +226,14 @@ const exportSvg = () => {
 	})
 }
 
+const exportAbc = () => {
+	vscode.postMessage({
+		type: "exportAbc",
+		abc: preview.abc,
+		sourcePath: preview.sourcePath
+	})
+}
+
 playButton.addEventListener("click", async () => {
 	if (isPlaying) {
 		await pause()
@@ -235,6 +244,7 @@ playButton.addEventListener("click", async () => {
 
 exportMidiButton.addEventListener("click", exportMidi)
 exportSvgButton.addEventListener("click", exportSvg)
+if (exportAbcButton) exportAbcButton.addEventListener("click", exportAbc)
 
 progress.addEventListener("input", () => {
 	isDragging = true

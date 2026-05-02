@@ -32,21 +32,25 @@
 		let barsPerLine = null
 		if (layout.mode === "fixed") {
 			barsPerLine = layout.barsPerLine || 4
-		} else if (layout.mode === "auto") {
-			const beats = meter.numerator || 4
-			barsPerLine = Math.max(1, Math.min(6, Math.round(12 / beats)))
 		}
 
-		const linebreakChar = layout.mode === "auto" || layout.mode === "fixed" ? "!" : ""
-		const body = convertBody(state.bodyLines, voices, {
+		const linebreakChar = layout.mode === "auto" || layout.mode === "fixed" ? "$" : ""
+
+		// auto: max notes per line = ~3 bars worth (in defaultLength units)
+		const maxNotesPerLine = layout.mode === "auto"
+			? Math.round(meter / defaultLength) * 3
+			: null
+
+		const bodyResult = convertBody(state.bodyLines, voices, {
 			diagnostics,
 			meter,
-			defaultLength,
-			linebreakChar,
-			layout: { mode: layout.mode, barsPerLine }
+			defaultLength
 		})
 
-		const abc = buildAbc(state, voices, body, linebreakChar)
+		const abc = buildAbc(state, voices, bodyResult, linebreakChar, layout, {
+			barsPerLine,
+			maxNotesPerLine
+		})
 
 		if (options.abcjs) {
 			try {
@@ -136,7 +140,9 @@
 		return match ? `V${match[1]}` : String(name).trim()
 	}
 
-	const buildAbc = (state, voices, body, linebreakChar) => {
+	const buildAbc = (state, voices, bodyResult, linebreakChar, layout, layoutOpts) => {
+		const { lines: bodyLines, notesPerLine } = bodyResult
+		const { barsPerLine, maxNotesPerLine } = layoutOpts || {}
 		const header = []
 		const voiceDefinitions = new Set()
 		let keyLine = null
@@ -158,7 +164,7 @@
 			if (voice) {
 				const normalized = normalizeVoiceName(voice[2])
 				voiceDefinitions.add(normalized)
-				header.push(`${voice[1]}V:${normalized}${voice[3]}`)
+				header.push(`${voice[1]}V:${stripLeadingV(normalized)}${voice[3]}`)
 				continue
 			}
 			header.push(item.text)
@@ -170,23 +176,110 @@
 
 		for (const voice of voices) {
 			if (!voiceDefinitions.has(voice)) {
-				header.push(`V:${voice}`)
+				header.push(`V:${stripLeadingV(voice)}`)
 			}
 		}
 
 		if (keyLine) header.push(keyLine)
-		if (linebreakChar) header.push(`I:linebreak <${linebreakChar}>`)
 
-		return `${header.join("\n")}\n${body.join("\n")}`.trimEnd() + "\n"
+		const needsLinebreak = true
+		header.push("I:linebreak $")
+
+		// collect measure content: group [V:voice] lines per voice
+		const voiceAccum = voices.map(() => [])
+		const passThroughs = [] // { voiceIndex, content }
+		for (const line of bodyLines) {
+			const m = line.match(/^\[V:([^\]]+)\]\s*(.*)$/)
+			if (m) {
+				const voiceName = normalizeVoiceName(m[1])
+				const idx = voices.indexOf(voiceName)
+				if (idx >= 0) voiceAccum[idx].push(m[2].trim())
+			} else if (line.trim()) {
+				// pass-through: comments, %% directives → first voice
+				passThroughs.push({ index: voiceAccum[0].length, content: line })
+				voiceAccum[0].push(line)
+			}
+		}
+
+		const bodyParts = []
+		const groupsPerVoice = voices.map((voice, v) => {
+			if (layout && layout.mode !== "original") {
+				return mergeBars(voiceAccum[v], layout, barsPerLine, maxNotesPerLine)
+			}
+			return voiceAccum[v]
+		})
+
+		const groupSize = layout && layout.mode === "fixed" && barsPerLine ? barsPerLine : 1
+		const maxGroups = Math.max(...groupsPerVoice.map((g) => g.length), 0)
+
+		for (let g = 0; g < maxGroups; g++) {
+			for (let v = 0; v < voices.length; v++) {
+				const groupLine = groupsPerVoice[v][g]
+				if (groupLine !== undefined) {
+					const voiceName = stripLeadingV(voices[v])
+					const isLastVoice = v === voices.length - 1
+					const linebreak = needsLinebreak && isLastVoice ? "$" : ""
+					bodyParts.push(`[V:${voiceName}] ${barSuffix(groupLine)}${linebreak}`)
+				}
+			}
+		}
+
+		return `${header.join("\n")}\n${bodyParts.join("\n")}`.trimEnd() + "\n"
 	}
 
+	const stripLeadingV = (name) => String(name).replace(/^V(\d)/, "$1")
+
+	const barSuffix = (content) => /[\]:|]$/.test(content.trim()) ? content.trim() : content.trim() + "|"
+
+	const mergeBars = (bars, layout, barsPerLine, maxNotesPerLine) => {
+		if (layout.mode === "fixed" && barsPerLine !== null) {
+			const result = []
+			for (let i = 0; i < bars.length; i += barsPerLine) {
+				const group = bars.slice(i, i + barsPerLine)
+				result.push(group.join("|"))
+			}
+			return result
+		}
+
+		if (layout.mode === "auto" && maxNotesPerLine !== null) {
+			const result = []
+			let current = ""
+			let currentNotes = 0
+			for (const bar of bars) {
+				const barNotes = countBarNotes(bar)
+				if (current && currentNotes + barNotes > maxNotesPerLine) {
+					result.push(current)
+					current = bar
+					currentNotes = barNotes
+				} else if (current) {
+					current += "|" + bar
+					currentNotes += barNotes
+				} else {
+					current = bar
+					currentNotes = barNotes
+				}
+			}
+			if (current) result.push(current)
+			return result
+		}
+
+		return [bars.join("|")]
+	}
+
+	const countBarNotes = (bar) => {
+		const text = bar.replace(/\|[\]:|[]*/g, "")
+			.replace(/"[^"]*"/g, "")
+			.replace(/![^!]*!/g, "")
+			.replace(/\{[^}]*\}/g, "")
+			.replace(/\[[A-Za-z]:[^\]]*\]/g, "")
+		const tokens = text.trim().split(/\s+/).filter(Boolean)
+		return tokens.length || 1
+	}
+
+
 	const convertBody = (bodyLines, voices, context) => {
-		const output = []
-		const linebreakChar = context.linebreakChar || ""
-		const layout = context.layout || {}
-		let barsPerLine = layout.barsPerLine || null
-		let barIndex = 0
-		let lastBreakOutputIndex = -1
+		const outputLines = []
+		const notesPerLine = []
 
 		let currentMeter = context.meter
 		let currentDefaultLength = context.defaultLength
@@ -197,11 +290,13 @@
 		for (const line of bodyLines) {
 			const text = line.text
 			if (!text.trim()) {
-				output.push("")
+				outputLines.push("")
+				notesPerLine.push(0)
 				continue
 			}
 			if (/^\s*%/.test(text) || fieldRe.test(text.trim()) || /^\s*\[[A-Za-z]:/.test(text)) {
-				output.push(text)
+				outputLines.push(text)
+				notesPerLine.push(0)
 				let m
 				meterRe.lastIndex = 0
 				while ((m = meterRe.exec(text))) currentMeter = parseFraction(m[1])
@@ -212,11 +307,13 @@
 
 			const measures = splitMeasures(text)
 			if (!measures.length) {
-				output.push(text)
+				outputLines.push(text)
+				notesPerLine.push(0)
 				continue
 			}
 
 			const perVoice = voices.map(() => "")
+			let lineNotes = 0
 			for (const measure of measures) {
 				const parts = splitTopLevel(measure.content, ";")
 
@@ -243,32 +340,20 @@
 					validateMeasureDuration(content, currentMeter, currentDefaultLength, context.diagnostics, line.line, measure.column, voices[index])
 					perVoice[index] += `${measure.prefix}${convertVoiceContent(content)}${measure.suffix}`
 				}
+				// count notes in the first voice for this measure
+				const firstVoiceContent = parts[0] != null ? parts[0] : ""
+				lineNotes += countNotes(firstVoiceContent, currentDefaultLength)
 			}
 
 			for (let index = 0; index < voices.length; index++) {
-				output.push(`[V:${voices[index]}] ${perVoice[index].trim()}`)
+				outputLines.push(`[V:${voices[index]}] ${perVoice[index].trim()}`)
 			}
-
-			const breakOutputIndex = output.length - 1
-			if (layout.mode === "original") {
-				if (linebreakChar && breakOutputIndex > lastBreakOutputIndex) {
-					output[breakOutputIndex] += linebreakChar
-					lastBreakOutputIndex = breakOutputIndex
-				}
-			} else if (barsPerLine !== null && linebreakChar) {
-				barIndex += measures.length
-				if (barIndex >= barsPerLine) {
-					barIndex = 0
-					if (breakOutputIndex > lastBreakOutputIndex) {
-						output[breakOutputIndex] += linebreakChar
-						lastBreakOutputIndex = breakOutputIndex
-					}
-				}
-			}
+			notesPerLine.push(lineNotes)
 		}
-		return output
+		return { lines: outputLines, notesPerLine }
 	}
 
+	// count notes (in eighth-note units) in a measure content string
 	const splitMeasures = (line) => {
 		const result = []
 		let prefix = ""
@@ -437,6 +522,64 @@
 		if (count === 3) return 2 / 3
 		if (count === 4) return 3 / 4
 		return (count - 1) / count
+	}
+
+	const countNotes = (content, defaultLength) => {
+		let text = stripExplicitRanges(stripComment(content))
+		text = text.replace(/"[^"]*"/g, "")
+		text = text.replace(/![^!]*!/g, "")
+		text = text.replace(/\[[A-Za-z]:[^\]]*\]/g, "")
+		text = text.replace(/\{[^}]*\}/g, "")
+
+		let total = 0
+		let index = 0
+		let tuplet = null
+		while (index < text.length) {
+			const char = text[index]
+			if (/\s|[()<>.\-]/.test(char)) {
+				if (char === "(") {
+					const tupletMatch = text.slice(index).match(/^\((\d+)(?::\d+)?(?::\d+)?/)
+					if (tupletMatch) {
+						tuplet = { remaining: Number(tupletMatch[1]), multiplier: tupletMultiplier(Number(tupletMatch[1])) }
+						index += tupletMatch[0].length
+						continue
+					}
+				}
+				index++
+				continue
+			}
+			let duration = 0
+			if (char === "[") {
+				const end = text.indexOf("]", index + 1)
+				if (end === -1) break
+				const chord = text.slice(index, end + 1)
+				if (/[A-Ga-gxz]/.test(chord)) {
+					const parsed = parseDurationSuffix(text, end + 1, defaultLength)
+					duration = parsed.duration
+					index = parsed.index
+				} else {
+					index = end + 1
+				}
+			} else {
+				const noteMatch = text.slice(index).match(/^(?:\^{1,2}|_{1,2}|=)?[A-Ga-gxz][,']*/)
+				if (noteMatch) {
+					const parsed = parseDurationSuffix(text, index + noteMatch[0].length, defaultLength)
+					duration = parsed.duration
+					index = parsed.index
+				} else {
+					index++
+				}
+			}
+			if (duration > 0) {
+				if (tuplet) {
+					duration *= tuplet.multiplier
+					tuplet.remaining--
+					if (tuplet.remaining <= 0) tuplet = null
+				}
+				total += duration / defaultLength // normalize to eighth-note units
+			}
+		}
+		return Math.round(total)
 	}
 
 	const splitTopLevel = (source, delimiter) => {

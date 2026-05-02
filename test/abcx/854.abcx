@@ -1,0 +1,260 @@
+X:1
+T:midi score
+M:4/4
+L:1/16
+K:D
+%%score (V1) (V2)
+
+% BATCH 1: m1-6, 6m, 11.3s
+z16 ; A,,2 D,,4 A,,2 D,,4 B,,2 D,,2
+[M:6/8]
+z12 ; D,,3/2 ^C,3/2 D,,3 D,3/2 D,,3 ^F,,3/2
+[M:4/4]
+z10 a2 z4 ; D,,4 G,,2 D,,4 A,,2 D,,4
+[a a]6 e2 ^f2 d2 z4 & z2 g2 ^f2 b6 z4 ; A,,2 D,,4 A,,2 D,,4 B,,2 D,,2
+b2 e2 z12 & g4 z12 ; D,,2 ^C,2 D,,4 D,2 D,,4 ^F,,2
+z16 ; D,,4 G,,2 D,,4 A,,2 D,,4
+% BATCH 2: m7-12, 6m, 11.8s
+z10 a2 z4 ; D,2 D,,4 E,2 D,,4 A,,2 D,,2
+[a a]6 e2 ^f2 d2 z4 & z2 g2 ^f2 b6 z4 ; D,,2 D,2 D,,4 A,,2 D,,4 E,2
+b2 e2 z6 d2 z4 & g4 z6 ^f2 z4 ; D,,4 A,,2 D,,4 D,2 D,,4
+g8 z8 & z4 ^c2 a z9 ; A,,2 D,,4 E,2 D,,4 A,,2 D,,2
+e4 d2 a z3 d2 z4 & ^f8 z2 ^f2 z4 ; D,,2 D,2 D,,4 A,,2 D,,4 E,2
+g8 z8 & z4 ^c2 a z9 ; D,,4 A,,2 D,,4 D,2 A,,4
+% BATCH 3: m13-18, 6m, 11.8s
+z10 d2 z4 & z10 ^f2 z4 ; ^F,,2 D,, ^F,, A,, D, z2 ^C, E, A, ^c z2 B,, D,
+g8 z8 & z3 ^c c ^c a z9 ; ^F, B, z2 A, ^c ^f a z2 G,, B,, D, G, z2
+e3 d ^c d a z3 d2 z4 & ^f8 z2 ^f2 z4 ; ^F, A, d ^f z12
+g8 z8 & z3 ^c c ^c a z9 ; z2 D,, ^F,, A,, D, z2 ^C, E, A, ^c z2 B,, D,
+z10 d A, z4 ; ^F, B, z2 A, ^c ^f a z2 ^G,, B,, D, ^G, z2
+z2 ^F, A, d ^f z2 e a ^c e z4 ; ^F, A, _e ^f z2 E,, ^G,, B,, E, z2 A, ^c e a
+% BATCH 4: m19-24, 6m, 11.8s
+z2 d ^f b d z2 ^c ^f a ^c' z4 ; z2 ^G,, B,, E, ^G, z2 ^F, A, _e ^f z2 E,, ^G,,
+z2 B, d g b z2 a d ^f a z4 ; B,, E, z2 E,, ^G,, B,, E, z2 E,, ^G,, B,, E, z2
+z a z a z a z d ^c b a g z4 ; E,, ^G,, B,, E, z2 E,,10
+z2 ^F, A, d ^f z2 e a ^c e z4 ; z16
+z2 d ^f b d z2 ^c ^f a ^c' z4 ; z8 ^c2 A,4 e2
+z2 B, d ^g b z2 a _e ^f a z4 ; ^c4 A,2 e4 E,2 A,2 z2
+% BATCH 5: m25-30, 6m, 11.8s
+z2 ^G, B, e ^g z2 ^c e a ^c' z4 ; z16
+z2 B, e ^g b z2 a _e ^f a z4 ; z7 ^c c ^c A, z2 e _e e
+z2 ^g b e ^g z2 e ^g b e z4 ; ^c z3 A,2 e4 E,2 A,2 z2
+z2 B, e ^g b z2 ^G, B, e ^g z4 ; ^C,2 E,4 E,,2 A,,2 z2 A,2 e2
+z10 ^c'2 z4 ; e2 E,2 A,2 z2 ^C,2 E,4 E,,2
+a4 e'2 ^c'4 z6 ; A,,2 z2 ^C,2 E,4 E,,2 A,,2 z2
+% BATCH 6: m31-36, 6m, 11.8s
+z16 ; z16
+e10 e2 z4 & ^c4 a2 e4 z6 ; z10 A,,,6 & z10 A,,6
+e8 z8 ; [A,, ^G,,]16
+a z2 e' _e' e' ^c' z2 ^c z ^c z4 ; E,,2 A,,,6 ^G,,2 ^F,,2 E,,2 ^F,,2 & z2 A,,14
+z3 e z e z10 ; E,,2 D,,2 ^C,,2 D,,2 E,,2 A,,,6 & z10 A,,6
+e10 e2 z4 & ^c4 a2 e4 z6 ; [A,, G,,]14 ^F,,2
+% BATCH 7: m37-42, 6m, 11.8s
+e10 z6 ; z16
+z10 e2 z4 & z16 ; z16
+e10 z6 ; z4 A,,2 D,,4 A,,2 D,,4
+z16 ; B,,2 D,,4 ^C,2 D,,4 D,2 D,,2
+z16 ; D,,2 ^F,,2 D,,4 G,,2 D,,4 A,,2
+z16 ; D,,4 A,,2 D,,4 A,,2 D,,4
+% BATCH 8: m43-48, 6m, 11.8s
+z16 & d12 z4 & z16 ; B,,2 D,,4 ^C,2 D,,4 D,2 D,,2
+a ^c e a a a ^g ^g ^f ^f e e z4 ; D,,2 ^F,,2 D,,4 G,,2 D,,4 A,,2
+^f ^f e e d d ^c ^c d d e e z4 ; D,,4 D,2 D,,4 E,2 D,,4
+a ^c e a a a ^g ^g ^f ^f e e z4 ; A,,2 D,,4 D,2 D,,4 A,,2 D,,2
+^f ^f e e d d ^c ^c d d e e z4 ; D,,2 E,2 D,,4 A,,2 D,,4 D,2
+a ^c e a a a g g ^f ^f e e z4 ; D,,4 A,,2 D,,4 E,2 D,,4
+% BATCH 9: m49-54, 6m, 11.8s
+d d ^c ^c B, b A, a G, g ^F, ^f z4 ; A,,2 D,,4 D,2 D,,4 A,,2 D,,2
+z16 ; D,,2 E,2 D,,4 A,,2 D,,4 z2
+z16 ; z6 D,, z ^F, z3 E,, z G, z
+z16 ; z2 ^F,, z A, z3 G,, z B, z3 C, z
+z16 ; c z3 ^C, z _B, z3 D, z A, z3
+z10 a2 z4 ; z6 D, z ^f z3 E, z g z
+% BATCH 10: m55-60, 6m, 11.8s
+[a a]6 e2 ^f2 d2 z4 & z2 g2 ^f2 b6 z4 ; z2 ^F, z a z3 G, z b z3 C, z
+b2 e2 z12 & g4 z12 ; c z3 D, z a z3 G, z g z3
+z3 d ^f ^f a4 g2 z4 ; G, z b z3 C, z c z3 D, z ^f z
+z3 _e' e' e g4 ^f2 z4 ; z2 G, z g z3 G, z b z3 C, z
+a2 g2 ^f2 e2 ^f2 d2 z4 & a6 b6 z4 ; c z3 D, z ^f z3 g2 a2 b2
+b2 e2 z6 d2 z4 & g4 z6 ^f2 z4 ; c8 b2 ^c2 d4
+% BATCH 11: m61-66, 6m, 11.8s
+g8 z8 & z4 ^c2 a z9 ; d4 ^c2 _e2 e4 d2 c2
+e4 d2 a z3 d2 z4 & ^f8 z2 ^f2 z4 ; c2 b2 c4 ^c2 d2 e2 ^f2
+g8 z8 & z4 ^c2 a z9 ; g8 ^f2 ^g2 a4
+z10 d2 z4 & z10 ^f2 z4 ; a4 ^g2 _b2 b4 a2 ^g2
+g8 z8 & z3 ^c c ^c a z9 ; a2 g2 ^f2 d2 c2 G,6
+e3 d ^c d a z3 d2 z4 & ^f8 z2 ^f2 z4 ; G,2 ^F,2 ^G,2 A,8 ^G,2
+% BATCH 12: m67-72, 6m, 11.8s
+g8 z8 & z3 ^c c ^c a z9 ; _B,2 B,8 A,2 B,2 c2
+z4 d2 a4 ^f2 z4 ; B,2 c2 d2 e2 ^f2 _B,2 z4 & z10 G,6
+d4 d2 d4 ^c2 z4 ; G,16
+d4 c2 d4 b2 z4 ; z16 & z14 A,2
+e4 a2 e4 g2 z4 ; A,8 z8
+d4 ^f2 d2 d2 d2 z4 ; z16
+% BATCH 13: m73-78, 6m, 11.8s
+d4 d'2 d4 ^c'2 z4 ; z16
+d4 c'2 d4 b2 z4 ; z16
+e4 a2 c4 ^f2 z4 ; z16
+b4 g2 f4 d'2 z4 ; z16 & z8 B,,2 ^C,2 D,2 E,2
+e4 c'2 c4 a2 z4 ; D,2 ^C,2 F,2 E,2 D,2 z6
+b4 g2 f4 d'2 z4 ; B,,2 ^C,2 D,2 E,2 D,2 ^C,2 F,2 E,2
+% BATCH 14: m79-84, 6m, 11.8s
+e4 c'2 c4 a2 z4 ; D,2 z14 & z8 B,,,2 ^C,,2 D,,2 E,,2
+g8 ^f2 ^g2 z4 & b2 c2 d2 e6 z4 ; D,,2 ^C,,2 F,,2 E,,2 D,,2 z6 & z10 E,,2 D,,2 ^C,,2
+a8 ^g2 _b2 z4 & z2 d2 e2 ^f6 z4 ; F,,2 E,,2 D,,2 z10 & z6 E,,2 D,,2 ^C,,2 F,,2 E,,2
+b8 c'2 b2 z4 & z2 e2 ^f2 g4 ^f2 z4 ; D,,2 z14
+e4 ^g4 a2 z6 & z2 a2 d2 e4 z6 ; z16
+^f2 g2 a2 b6 z4 & d8 ^c2 _e2 z4 ; z6 A,, E, D, ^C, B,, A,, ^G,, ^F,, E,, D,,
+% BATCH 15: m85-90, 6m, 11.8s
+e8 _e2 f2 z4 & z2 a2 b2 ^c'6 z4 ; ^C,, B,,, A,,,10 A,,2 D,,2
+^f8 f4 z4 & z2 b2 ^c'2 d'4 d'2 z4 ; D,,2 A,,2 D,,4 B,,2 D,,4 ^C,2
+e4 _e2 d2 z8 & z2 c'6 z8 ; D,,4 D,2 D,,4 ^F,,2 D,,4
+z2 f2 _e2 e6 z4 & z8 d2 b2 z4 ; G,,2 D,,4 A,,2 D,,4 A,,2 D,,2
+c8 e2 ^c2 z4 & z2 g2 f2 ^f6 z4 ; D,,2 A,,2 D,,4 B,,2 D,,4 ^C,2
+d8 f2 _e2 z4 & z2 a2 ^f2 g6 z4 ; D,,4 D,2 D,,4 ^F,,2 D,,4
+% BATCH 16: m91-96, 6m, 11.8s
+[e g]2 z14 ; G,,2 D,,4 A,,2 D,,4 D,2 D,,2
+z16 ; D,,2 E,2 D,,4 A,,2 D,,4 D,2
+z16 ; D,,4 A,,2 D,,4 E,2 D,,4
+z16 & z10 _b2 z4 ; A,,2 D,,4 D,2 D,,4 A,,2 D,,2
+z4 ^g4 a2 z6 & z2 a2 z12 ; D,,2 E,2 D,,4 A,,2 D,,4 D,2
+z2 F,2 A,2 d z f2 d2 z4 ; D,,4 A,,2 D,,4 E,2 D,,4
+% BATCH 17: m97-102, 6m, 11.8s
+^c z ^c2 e2 g z g2 e2 z4 ; A,,2 D,,4 D,2 A,,4 ^F,,2 D,, ^F,,
+d z d2 f2 a z a2 f2 z4 ; A,, D, z2 ^C, E, A, ^c z2 B,, D, ^F, B, z2
+_e z _e2 g2 _b z _b2 g2 z4 ; A, ^c ^f a z2 G,, B,, D, G, z2 ^F, A, d ^f
+^f z ^f2 a2 c z c'2 a2 z4 ; z14 D,, ^F,,
+g2 d'2 g2 ^g2 d'2 ^g2 z4 ; A,, D, z2 ^C, E, _B, ^c z2 B,, D, ^F, B, z2
+^c e a ^c' a a b b ^c ^c' d d' z4 ; A, c ^f a z2 G,, B,, D, G, z2 ^F, A, _e ^f
+% BATCH 18: m103-108, 6m, 11.8s
+e e' d d' ^c ^c' f f' e e' d d' z4 ; z2 G,, B,, E, G, z2 ^G, B, e ^g z2 A,, ^C,
+e a ^c' e' a a b b ^c ^c' d d' z4 ; E, A, z2 A, ^c e a z2 A,, D, ^F, A, z2
+e e' d d' ^c ^c' f f' e e' d d' z4 ; A, d f a z2 A,,, ^C,, E,, A,, z2 A,, ^C, E, A,
+e a ^c' e' a a b b ^c ^c' d d' z4 ; z2 A,,, D,, ^F,, A,, z2 A,, D, F, A, z2 A,,, ^C,,
+e e' d d' ^c ^c' f f' e e' d d' z4 ; E,, A,, z2 A,,, ^C,, E,, A,, z2 A,,, ^C,, E,, A,, z2
+e e' d d' ^c ^c' f f' e e' d d' z4 ; A,,, ^C,, E,, A,, z2 A,,,10
+% BATCH 19: m109-114, 6m, 11.8s
+e e' d d' ^c ^c' f f' e e' d d' z4 ; z16
+^c' e' d' ^c' b a ^g ^f e d ^c b z4 ; z8 ^F,2 D,4 A,2
+a e d ^c b a ^g ^f e d ^c B, z4 ; ^F,4 D,2 A,4 A,,2 D,2 z2
+A, e d ^c B, A, ^G, ^F, E, D, ^C, B,, z4 ; z16
+z2 ^c z e z11 ; z7 ^F, F, ^F, D, z2 A, ^G, A,
+z16 ; ^F, z3 D,2 A,4 A,,2 D,2 z2
+% BATCH 20: m115-120, 6m, 11.8s
+z16 ; ^F,,2 A,,4 A,,,2 D,,2 z2 D,2 A,2
+z10 a2 z4 ; A,2 A,,2 D,2 z2 ^F,,2 A,,4 A,,,2
+[a a]6 e2 ^f2 d2 z4 & z2 g2 ^f2 b6 z4 ; D,,2 z2 D,,2 A,,4 A,,,2 D,,2 z2
+b2 e2 z12 & g4 z12 ; D,,2 A,,4 A,,,2 D,,2 z6
+z d ^f d a ^f a4 g2 z4 ; z16
+z _e' e' ^c' g e g4 ^f2 z4 ; z6 D,,6 ^C,2 B,,2 & z6 D,10
+% BATCH 21: m121-126, 6m, 11.8s
+a2 g2 ^f2 e2 ^f2 d2 z4 & a6 b6 z4 ; A,,2 B,,2 A,,2 G,,2 ^F,,2 G,,2 A,,2 D,,2 & z14 D,2
+b2 e2 z6 d2 z4 & g4 z6 ^f2 z4 ; [D, D,,]16
+g8 z8 & z4 ^c2 a z9 ; ^F,,2 G,,2 A,,2 D,,6 C,2 B,,2 & z6 D,10
+e4 d2 a z3 d2 z4 & ^f8 z2 ^f2 z4 ; [A,, D,]10 G,,2 ^F,,2 E,,2
+g8 z8 & z4 ^c2 a z9 ; z16
+z10 d2 z4 & z10 ^f2 z4 ; z16
+% BATCH 22: m127-132, 6m, 11.8s
+g8 z8 & z3 ^c c ^c a z9 ; D,2 G,,4 D,2 G,,4 E,2 G,,2
+e3 d ^c d a z3 d2 z4 & ^f8 z2 ^f2 z4 ; G,,2 ^F,2 G,,4 G,2 G,,4 B,,2
+g8 z8 & z3 ^c c ^c a z9 ; G,,4 C,2 G,,4 D,2 G,,4
+z10 d A, z4 ; G,2 G,,4 D,2 G,,4 E,2 G,,2
+z2 ^F, A, d ^f z2 e a ^c e z4 ; G,,2 ^F,2 G,,4 G,2 ^G,,4 ^G,2
+z2 d ^f b d z2 ^c ^f a ^c' z4 ; A,,4 A,2 _B,,4 _B,2 B,,4
+% BATCH 23: m133-138, 6m, 11.8s
+z2 B, d g b z2 a d ^f a z4 ; B,2 A,,4 A,2 A,,4 A,2 A,,2
+z a z a z a z d ^c b a g z4 ; A,,2 A,2 A,,4 A,2 A,,4 A,2
+z2 ^F, A, d ^f z2 e _b ^c e z4 ; A,,4 A,2 A,,4 A,2 A,,4
+z2 d ^f b d z2 c ^f a c' z4 ; A,2 A,,4 A,2 A,,4 A,2 A,,2
+z2 B, d g b z2 _e a b _e' z4 ; A,,2 A,2 A,,4 A,2 A,,2 A,2 A,,2
+z2 e g b e z2 d e b d' z4 ; A,2 A,,2 A,2 A,,,2 A,,2 A,,,2 A,,2 A,,,2
+% BATCH 24: m139-144, 6m, 11.8s
+z2 ^c e a ^c z2 ^c e g ^c' z4 ; A,,2 A,,,2 A,,2 A,,,2 A,,2 A,,,2 A,,2 A,,,2
+z2 d ^f a d z2 d ^g b d' z4 ; A,,2 A,,,2 A,,2 A,,,2 A,,2 A,,, ^C,, E,, G,, z2
+z2 ^C, E, A, ^c z2 ^c e g ^c z4 ; A,, ^C, E, G, z12
+z2 D, ^F, A, d z2 d ^g b d z4 ; z2 A,, ^C, E, G, z2 A, ^c e g z4
+z2 ^c e a ^c z2 A, ^c e a z4 ; z10 A, ^c e g z2
+z2 E, A, ^c e z2 ^C, E, A, ^c z4 ; z6 A, ^c e g z6
+% BATCH 25: m145-150, 6m, 11.8s
+z10 ^f2 z4 ; z16
+d4 a2 ^f4 z6 ; z16
+z16 ; z16
+a10 a2 z4 & ^f4 d2 A,4 z6 ; z16
+a8 z8 ; z16
+d z2 a ^g a ^f z2 ^f z ^f z4 ; z16
+% BATCH 26: m151-156, 6m, 11.8s
+z3 a z a z10 ; z16
+a10 a2 z4 & ^f4 d2 A,4 z6 ; z16
+a10 z6 ; z16
+z10 a2 z4 & z16 ; z16
+a10 z6 ; z16
+z16 ; d a ^f d A, ^f d A, ^F, d A, ^F, D, A, ^F, D,
+% BATCH 27: m157-163, 7m, 11.3s
+z16 ; A,, ^F,, D,,4 z10
+z16 ; z16
+[M:6/8]
+z12 ; z12
+z12 & g12 & z12 ; z12
+d ^f a d' d d' ^c ^c' b b a a ; z12
+b b a a g g ^f ^f g g a a ; z12
+d ^f a d' d d' ^c ^c' b b a a ; z12
+% BATCH 28: m164-170, 7m, 10.3s
+b b a a g g ^f ^f g g a a ; z12
+d ^f a d' d d' c c' b b a a ; z12
+g g ^f ^f e e d d c c B, b ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+% BATCH 29: m171-177, 7m, 10.3s
+z12 ; z12
+z12 ; z12
+z8 g2 z2 ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+% BATCH 30: m178-184, 7m, 10.3s
+z12 ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+z12 ; z12
+% BATCH 31: m185-191, 7m, 10.3s
+z12 ; z12
+z12 ; z12
+z12 ; z12
+z3 A,, ^C, E, G, z2 A, ^c e ; z12
+g z11 ; z12
+z3 A, ^c e g z2 a ^c e ; z12
+g z11 ; z12
+% BATCH 32: m192-199, 8m, 10.3s
+z3 a ^c e g z5 ; z12
+[M:5/8]
+z3 a ^c e g4 ; z10
+[M:1/8]
+g ^f ; z2
+[M:6/8]
+f ^f g ^f d' ^f a g ^f g d' g ; z12
+a g ^f g e' g g ^f f ^f d' ^f ; z12
+e d ^c d d' d ^c b _b b b b ; z12
+a g ^f g g g ^f a d ^f a g ; z12
+g ^f f ^f d' ^f a g ^f g d' g ; z12
+% BATCH 33: m200-206, 7m, 10.3s
+a g ^f g e' g g ^f f ^f d' ^f ; z12
+e d ^c d d' d ^c b _b b b b ; z12
+a g ^f g g g ^f a d ^f a g ; z12
+e d ^c d d' d ^c b _b b b b ; z12
+a g ^f g g g ^f a d ^f a ^f ; z12
+e d ^c d d' d ^c b _b b b b ; z12
+a g ^f g g g ^f a d ^f a ^f ; z12
+% BATCH 34: m207-212, 6m, 8.6s
+a g ^f g g g ^f a d ^f a ^f ; z12
+a g ^c g e ^c g e ^c' g e' ^c' ; z12
+d' a ^f d' a ^f d a ^f d a ^f ; z12
+d a ^f d a ^f d a ^f d A, ^F, ; z12
+D,4 z8 ; z12
+[M:5/8]
+z10 ; z10
