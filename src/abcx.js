@@ -112,17 +112,40 @@
 	const parseScoreVoices = (score) => {
 		const voices = []
 		const seen = new Set()
-		const matches = score.matchAll(/\(([^)]*)\)/g)
-		for (const match of matches) {
-			const names = match[1].trim().split(/\s+/).filter(Boolean)
-			for (const name of names) {
-				const normalized = normalizeVoiceName(name)
-				if (!seen.has(normalized)) {
+
+		let text = score || ""
+		text = text.replace(/^\s*%%score\s+/, "")
+
+		// Extract voices from { ... } block if present (xml2abc format).
+		const braceMatch = text.match(/\{([^}]*)\}/)
+		if (braceMatch) {
+			const inner = braceMatch[1]
+			for (const group of inner.split("|")) {
+				const trimmed = group.trim()
+				const stripped = trimmed.startsWith("(") && trimmed.endsWith(")")
+					? trimmed.slice(1, -1) : trimmed
+				for (const tok of stripped.split(/\s+/).filter(Boolean)) {
+					const normalized = normalizeVoiceName(tok)
+					if (normalized && !seen.has(normalized)) {
+						seen.add(normalized)
+						voices.push(normalized)
+					}
+				}
+			}
+		}
+
+		// Also collect voices from (...) groups outside braces.
+		const parenMatches = text.matchAll(/\(([^)]*)\)/g)
+		for (const match of parenMatches) {
+			for (const tok of match[1].trim().split(/\s+/).filter(Boolean)) {
+				const normalized = normalizeVoiceName(tok)
+				if (normalized && !seen.has(normalized)) {
 					seen.add(normalized)
 					voices.push(normalized)
 				}
 			}
 		}
+
 		return voices
 	}
 
@@ -182,22 +205,24 @@
 
 		if (keyLine) header.push(keyLine)
 
-		const needsLinebreak = true
 		header.push("I:linebreak $")
 
-		// collect measure content: group [V:voice] lines per voice
+		// collect measure content: tab-joined lines per voice
 		const voiceAccum = voices.map(() => [])
-		const passThroughs = [] // { voiceIndex, content }
 		for (const line of bodyLines) {
-			const m = line.match(/^\[V:([^\]]+)\]\s*(.*)$/)
-			if (m) {
-				const voiceName = normalizeVoiceName(m[1])
-				const idx = voices.indexOf(voiceName)
-				if (idx >= 0) voiceAccum[idx].push(m[2].trim())
-			} else if (line.trim()) {
-				// pass-through: comments, %% directives → first voice
-				passThroughs.push({ index: voiceAccum[0].length, content: line })
-				voiceAccum[0].push(line)
+			if (!line.trim()) continue
+			// Pass-through: comments, %% directives → skip in body
+			if (/^\s*%/.test(line)) continue
+			const parts = line.split("\t")
+			if (parts.length === voices.length) {
+				for (let v = 0; v < voices.length; v++) {
+					voiceAccum[v].push(parts[v].trim())
+				}
+			} else if (parts.length === 1) {
+				voiceAccum[0].push(parts[0].trim())
+			} else {
+				// Fallback: single-voice line or mismatched
+				voiceAccum[0].push(line.trim())
 			}
 		}
 
@@ -209,17 +234,18 @@
 			return voiceAccum[v]
 		})
 
-		const groupSize = layout && layout.mode === "fixed" && barsPerLine ? barsPerLine : 1
 		const maxGroups = Math.max(...groupsPerVoice.map((g) => g.length), 0)
 
-		for (let g = 0; g < maxGroups; g++) {
-			for (let v = 0; v < voices.length; v++) {
-				const groupLine = groupsPerVoice[v][g]
-				if (groupLine !== undefined) {
-					const voiceName = stripLeadingV(voices[v])
-					const isLastVoice = v === voices.length - 1
-					const linebreak = needsLinebreak && isLastVoice ? "$" : ""
-					bodyParts.push(`[V:${voiceName}] ${barSuffix(groupLine)}${linebreak}`)
+		// Emit V: blocks — one per voice, matching Python abcx_to_abc output.
+		for (let v = 0; v < voices.length; v++) {
+			const voiceName = stripLeadingV(voices[v])
+			bodyParts.push(`V:${voiceName}`)
+			for (let g = 0; g < maxGroups; g++) {
+				const content = groupsPerVoice[v][g]
+				if (content !== undefined) {
+					bodyParts.push(barSuffix(content))
+				} else {
+					bodyParts.push("z |")
 				}
 			}
 		}
@@ -294,7 +320,7 @@
 				notesPerLine.push(0)
 				continue
 			}
-			if (/^\s*%/.test(text) || fieldRe.test(text.trim()) || /^\s*\[[A-Za-z]:/.test(text)) {
+			if (/^\s*%/.test(text) || fieldRe.test(text.trim())) {
 				outputLines.push(text)
 				notesPerLine.push(0)
 				let m
@@ -305,49 +331,45 @@
 				continue
 			}
 
-			const measures = splitMeasures(text)
-			if (!measures.length) {
-				outputLines.push(text)
-				notesPerLine.push(0)
-				continue
+			// First split by ; to get per-voice content.
+			const voiceContents = splitTopLevel(stripComment(text), ";")
+			if (voiceContents.length !== voices.length) {
+				addDiagnostic(
+					context.diagnostics,
+					"error",
+					line.line,
+					0,
+					`Expected ${voices.length} voice(s) from %%score, found ${voiceContents.length}.`
+				)
 			}
 
+			// For each voice, split its content by | to get per-voice measures.
+			const perVoiceMeasures = voices.map((_, v) =>
+				v < voiceContents.length ? splitMeasures(voiceContents[v]) : []
+			)
+			const maxMeasures = Math.max(...perVoiceMeasures.map((ms) => ms.length), 0)
+
+			// Regroup: for each measure index, concatenate all voices.
 			const perVoice = voices.map(() => "")
 			let lineNotes = 0
-			for (const measure of measures) {
-				const parts = splitTopLevel(measure.content, ";")
-
-				// extract [M:...] and [L:...] from first voice only
-				if (parts.length > 0) {
-					let m
-					meterRe.lastIndex = 0
-					while ((m = meterRe.exec(parts[0]))) currentMeter = parseFraction(m[1])
-					lengthRe.lastIndex = 0
-					while ((m = lengthRe.exec(parts[0]))) currentDefaultLength = parseFraction(m[1])
+			for (let mIdx = 0; mIdx < maxMeasures; mIdx++) {
+				for (let v = 0; v < voices.length; v++) {
+					const vms = perVoiceMeasures[v]
+					const m = mIdx < vms.length ? vms[mIdx] : null
+					if (m) {
+						perVoice[v] += `${m.prefix}${convertVoiceContent(m.content)}${m.suffix}`
+					} else {
+						perVoice[v] += "z"
+					}
 				}
-
-				if (parts.length !== voices.length) {
-					addDiagnostic(
-						context.diagnostics,
-						"error",
-						line.line,
-						measure.column,
-						`Expected ${voices.length} voice(s) from %%score, found ${parts.length}.`
-					)
-				}
-				for (let index = 0; index < voices.length; index++) {
-					const content = parts[index] == null ? "" : parts[index]
-					validateMeasureDuration(content, currentMeter, currentDefaultLength, context.diagnostics, line.line, measure.column, voices[index])
-					perVoice[index] += `${measure.prefix}${convertVoiceContent(content)}${measure.suffix}`
-				}
-				// count notes in the first voice for this measure
-				const firstVoiceContent = parts[0] != null ? parts[0] : ""
-				lineNotes += countNotes(firstVoiceContent, currentDefaultLength)
+				// Count notes in first voice for this measure group.
+				const firstVoiceMeasures = perVoiceMeasures[0]
+				const firstM = mIdx < firstVoiceMeasures.length ? firstVoiceMeasures[mIdx] : null
+				const fc = firstM ? firstM.content : ""
+				lineNotes += countNotes(fc, currentDefaultLength)
 			}
 
-			for (let index = 0; index < voices.length; index++) {
-				outputLines.push(`[V:${voices[index]}] ${perVoice[index].trim()}`)
-			}
+			outputLines.push(perVoice.map((p) => p.trim()).join("\t"))
 			notesPerLine.push(lineNotes)
 		}
 		return { lines: outputLines, notesPerLine }
@@ -934,6 +956,12 @@
 			if (v) ensureVoice(v[1])
 		}
 
+		// Filter out bare V: lines from middleLines — these mark the start
+		// of voice music blocks and should not appear in the ABCX header.
+		const bareVRe = /^V:\s*\S+\s*$/
+		middleLines.splice(0, middleLines.length,
+			...middleLines.filter((line) => !bareVRe.test(line.trim())))
+
 		let currentVoice = voiceOrder[0] || ensureVoice("1")
 
 		for (const line of merged) {
@@ -958,8 +986,11 @@
 
 			const cleaned = stripComment(content).trim()
 			if (!cleaned) continue
+			// Flatten: each source measure -> one ABCX output line.
 			const measures = splitAbcMeasures(cleaned)
-			for (const m of measures) voiceBars.get(voiceName).push(m)
+			for (const ms of measures) {
+				voiceBars.get(voiceName).push([ms])
+			}
 		}
 
 		const outHeader = headerLines.slice()
@@ -980,23 +1011,15 @@
 
 		for (let i = 0; i < maxBars; i++) {
 			const parts = voiceOrder.map((v) => {
-				const m = voiceBars.get(v)[i]
-				return m ? m.content.trim() : "z"
+				const bars = voiceBars.get(v)
+				const m = i < bars.length ? bars[i] : null
+				if (!m || !m.length) return "z"
+				// No internal bars in ABCX voice content — just notes/rests.
+				return m.map((ms) => `${ms.prefix.replace(/\|+$/, "")}${ms.content.trim()}${ms.suffix.replace(/^\|+/, "")}`).join(" ").trim()
 			})
-			let prefix = ""
-			let suffix = ""
-			for (const v of voiceOrder) {
-				const m = voiceBars.get(v)[i]
-				if (m) {
-					if (!prefix && m.prefix) prefix = m.prefix
-					if (!suffix && m.suffix) suffix = m.suffix
-				}
-			}
-			let row = ""
-			if (prefix) row += prefix + " "
-			row += parts.join(sep)
-			if (suffix) row += " " + suffix
-			outBody.push(row.trim())
+			let line = parts.join(sep).trim()
+			if (line && !line.endsWith("|")) line += "|"
+			outBody.push(line)
 		}
 
 		const middleStr = middleLines.length ? middleLines.join("\n") + "\n" : ""

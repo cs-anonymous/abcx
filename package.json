@@ -43,7 +43,11 @@
 				],
 				"extensions": [
 					".abc"
-				]
+				],
+				"iconReferences": {
+					"light": "icons/light/abc.svg",
+					"dark": "icons/dark/abc.svg"
+				}
 			},
 			{
 				"id": "abcx",
@@ -52,7 +56,11 @@
 				],
 				"extensions": [
 					".abcx"
-				]
+				],
+				"iconReferences": {
+					"light": "icons/light/abc.svg",
+					"dark": "icons/dark/abc.svg"
+				}
 			}
 		],
 		"grammars": [
@@ -132,5 +140,8 @@
 	},
 	"galleryBanner": {
 		"theme": "dark"
+	},
+	"dependencies": {
+		"jsdom": "^29.1.1"
 	}
 }

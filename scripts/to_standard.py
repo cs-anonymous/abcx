@@ -151,14 +151,48 @@ def strip_leading_v(name: str) -> str:
 
 
 def parse_score_voices(score_line: str) -> list:
+    """Extract ordered voice list from a %%score line.
+
+    Handles all formats seen in practice:
+      %%score { 1 | 2 }                          -- xml2abc simple
+      %%score { ( 1 3 4 5 ) | ( 2 6 7 ) }        -- xml2abc nested
+      %%score { 1 | ( 2 5 ) | ( 3 4 ) }          -- xml2abc mixed
+      %%score ( 1 2 ) { ( 3 6 8 ) | ( 4 5 7 ) }  -- xml2abc hybrid
+      %%score (V1) (V2)                          -- ABCX style
+    """
     voices: list = []
     seen: set = set()
-    for m in re.finditer(r"\(([^)]*)\)", score_line or ""):
-        for name in m.group(1).strip().split():
-            norm = normalize_voice_name(name)
+
+    text = score_line or ""
+
+    # Strip the %%score directive prefix.
+    text = re.sub(r"^\s*%%score\s+", "", text)
+
+    # Extract the { ... } block if present.
+    brace_m = re.search(r"\{([^}]*)\}", text)
+    if brace_m:
+        inner = brace_m.group(1)
+        # Split by | to get staff groups.
+        for group in inner.split("|"):
+            group = group.strip()
+            # If the group is parenthesised, strip parens.
+            if group.startswith("(") and group.endswith(")"):
+                group = group[1:-1]
+            for tok in group.split():
+                norm = normalize_voice_name(tok)
+                if norm and norm not in seen:
+                    seen.add(norm)
+                    voices.append(norm)
+
+    # Also collect voices from (...) groups outside the braces
+    # (e.g. "%%score ( 1 2 ) { ... }").
+    for m in re.finditer(r"\(([^)]*)\)", text):
+        for tok in m.group(1).strip().split():
+            norm = normalize_voice_name(tok)
             if norm and norm not in seen:
                 seen.add(norm)
                 voices.append(norm)
+
     return voices
 
 
@@ -502,7 +536,7 @@ def abc_to_abcx(source: str) -> str:
         merged.append(buffer)
 
     voice_order: list = []
-    voice_bars: dict = {}
+    voice_bars: dict = {}  # voice -> flat list of Measure (one per source measure)
 
     def ensure_voice(raw: str) -> str:
         norm = normalize_voice_name(raw)
@@ -515,6 +549,18 @@ def abc_to_abcx(source: str) -> str:
         m = V_FIELD_RE.match(line.strip())
         if m:
             ensure_voice(m.group(1))
+
+    # Filter out bare V: lines from middle_lines — these mark the start of
+    # voice music blocks and should not appear in the ABCX header (abcx_to_abc
+    # reconstructs V: declarations from %%score + body structure).
+    _BARE_V_RE = re.compile(r"^V:\s*\S+\s*$")
+    filtered_middle = []
+    for line in middle_lines:
+        if _BARE_V_RE.match(line.strip()):
+            # Bare V: with no attributes — skip.
+            continue
+        filtered_middle.append(line)
+    middle_lines = filtered_middle
 
     current_voice = voice_order[0] if voice_order else ensure_voice("1")
 
@@ -536,6 +582,7 @@ def abc_to_abcx(source: str) -> str:
         cleaned = strip_comment(content).strip()
         if not cleaned:
             continue
+        # Flatten: each source measure → one ABCX output line.
         for measure in split_abc_measures(cleaned):
             voice_bars[voice_name].append(measure)
 
@@ -561,24 +608,17 @@ def abc_to_abcx(source: str) -> str:
         parts = []
         for v in voice_order:
             bars = voice_bars[v]
-            parts.append(bars[i].content.strip() if i < len(bars) else "z")
-        prefix = ""
-        suffix = ""
-        for v in voice_order:
-            bars = voice_bars[v]
             if i < len(bars):
                 m = bars[i]
-                if not prefix and m.prefix:
-                    prefix = m.prefix
-                if not suffix and m.suffix:
-                    suffix = m.suffix
-        row = ""
-        if prefix:
-            row += prefix + " "
-        row += sep.join(parts)
-        if suffix:
-            row += " " + suffix
-        out_body.append(row.strip())
+                # No internal bars in ABCX voice content — just notes/rests.
+                parts.append(f"{m.prefix.rstrip('|')}{m.content.strip()}{m.suffix.lstrip('|')}")
+            else:
+                parts.append("z")
+        line = sep.join(p.strip() for p in parts).strip()
+        # Add trailing bar line to mark measure end.
+        if line and not line.endswith("|"):
+            line += "|"
+        out_body.append(line)
 
     middle_str = ("\n".join(middle_lines) + "\n") if middle_lines else ""
     return "\n".join(out_header) + "\n" + middle_str + "\n".join(out_body) + "\n"
@@ -738,35 +778,43 @@ def abcx_to_abc(source: str, *, validate: bool = True) -> tuple:
             converted.append("")
             continue
         s = text.strip()
-        if re.match(r"^\s*%", text) or FIELD_RE.match(s) or re.match(r"^\s*\[[A-Za-z]:", text):
+        if re.match(r"^\s*%", text) or FIELD_RE.match(s):
             converted.append(text)
             continue
 
-        measures = _split_abcx_measures(text)
-        if not measures:
-            converted.append(text)
-            continue
+        # First split by ; to get per-voice content.
+        voice_contents = split_top_level(s, ";")
+        if len(voice_contents) != len(voices):
+            diagnostics.append(
+                Diagnostic(
+                    "error",
+                    line_no, 0,
+                    f"Expected {len(voices)} voice(s) from %%score, found {len(voice_contents)}.",
+                )
+            )
 
+        # For each voice, split its content by | to get per-voice measures.
+        per_voice_measures: list = []
+        max_measures = 0
+        for v_idx, vc in enumerate(voice_contents):
+            ms = split_abc_measures(vc) if v_idx < len(voices) else []
+            per_voice_measures.append(ms)
+            if len(ms) > max_measures:
+                max_measures = len(ms)
+
+        # Regroup: for each measure index, concatenate all voices' content.
         per_voice = ["" for _ in voices]
-        for measure in measures:
-            parts = split_top_level(measure["content"], ";")
-            if len(parts) != len(voices):
-                diagnostics.append(
-                    Diagnostic(
-                        "error",
-                        line_no,
-                        measure["column"],
-                        f"Expected {len(voices)} voice(s) from %%score, found {len(parts)}.",
-                    )
-                )
-            for idx, _ in enumerate(voices):
-                content = parts[idx] if idx < len(parts) else ""
-                per_voice[idx] += (
-                    f"{measure['prefix']}{_strip_explicit_ranges(content).strip()}{measure['suffix']}"
-                )
+        for m_idx in range(max_measures):
+            for v_idx in range(len(voices)):
+                vms = per_voice_measures[v_idx] if v_idx < len(per_voice_measures) else []
+                m = vms[m_idx] if m_idx < len(vms) else None
+                if m:
+                    per_voice[v_idx] += f"{m.prefix}{_strip_explicit_ranges(m.content.strip())}{m.suffix}"
+                else:
+                    per_voice[v_idx] += "z"
 
-        for idx, voice in enumerate(voices):
-            converted.append(f"[V:{voice}] {per_voice[idx].strip()}")
+        # Join all voices for this visual line with tab separator.
+        converted.append("\t".join(pv.strip() for pv in per_voice))
 
     if validate:
         errors = [d for d in diagnostics if d.severity == "error"]
@@ -774,25 +822,39 @@ def abcx_to_abc(source: str, *, validate: bool = True) -> tuple:
             d = errors[0]
             raise AbcError(d.message, d.line, d.column)
 
-    # buildAbc-equivalent: partition into voice accumulators, pass-throughs to voice 0
-    voice_accum: list = [[] for _ in voices]
-    vline_re = re.compile(r"^\[V:([^\]]+)\]\s*(.*)$")
+    # buildAbc-equivalent: partition converted lines into per-voice accumulators.
+    # The `converted` list has one entry per ABCX visual line, where each entry
+    # is either a pass-through field or a joined string of all voices for that
+    # visual line.
+    voice_accum: list = [[] for _ in voices]  # one list of visual lines per voice
+    pass_through: list = []  # fields that go before voice blocks
+
     for line in converted:
         if not line.strip():
             continue
-        m = vline_re.match(line)
-        if m:
-            vname = normalize_voice_name(m.group(1))
-            if vname in voices:
-                voice_accum[voices.index(vname)].append(m.group(2).strip())
-            else:
-                voice_accum[0].append(line)
+        s = line.strip()
+        # Field lines go to pass-through.
+        if FIELD_RE.match(s) or re.match(r"^\s*%", line):
+            pass_through.append(line)
+            continue
+        # Music lines should already have been split by voice in the convert
+        # step. We expect entries like "V1\t<V1content>\nV2\t<V2content>"
+        # when there are multiple voices.
+        parts = line.split("\t")
+        if len(parts) == len(voices):
+            for idx, content in enumerate(parts):
+                voice_accum[idx].append(content.strip())
+        elif len(parts) == 1:
+            # Single voice fallback.
+            voice_accum[0].append(parts[0].strip())
         else:
             voice_accum[0].append(line)
 
-    # Header assembly
+    # Header assembly. Collect metadata fields and %%score, but strip
+    # per-voice directives (V:, %%MIDI, bare L:) — those will be emitted
+    # inside each voice's body block.
     header: list = []
-    voice_definitions: set = set()
+    voice_definitions: dict = {}  # voice_id -> full declaration line
     key_line: Optional[str] = None
     has_score = False
 
@@ -810,34 +872,46 @@ def abcx_to_abc(source: str, *, validate: bool = True) -> tuple:
         v_match = re.match(r"^(\s*)V:\s*([^\s]+)(.*)$", line)
         if v_match:
             norm = normalize_voice_name(v_match.group(2))
-            voice_definitions.add(norm)
-            header.append(f"{v_match.group(1)}V:{strip_leading_v(norm)}{v_match.group(3)}")
+            voice_definitions[norm] = f"{v_match.group(1)}V:{strip_leading_v(norm)}{v_match.group(3)}"
+            continue
+        # Per-voice directives (%%MIDI, bare L:) go into voice blocks.
+        if s.startswith("%%MIDI") or (L_RE.match(s) and len(voices) > 1):
+            # Attach to the most recently defined voice.
+            last_v = list(voice_definitions.keys())[-1] if voice_definitions else None
+            if last_v:
+                voice_definitions.setdefault(last_v, f"V:{strip_leading_v(last_v)}")
+                voice_definitions[last_v] += "\n" + line
             continue
         header.append(line)
 
     if not has_score and len(voices) > 1:
         header.append("%%score " + " ".join(f"({v})" for v in voices))
 
-    for v in voices:
-        if v not in voice_definitions:
-            header.append(f"V:{strip_leading_v(v)}")
-
     if key_line:
         header.append(key_line)
     header.append("I:linebreak $")
 
-    # Emit groups: for each index, all voices then $ on the last
+    # Emit voice blocks. Each block starts with the voice declaration
+    # (including any per-voice directives captured earlier), followed by
+    # its visual lines. abcjs aligns voices by source-code line position
+    # within each V: block, so we emit one block per voice with matching
+    # line counts.
     body_parts: list = []
-    max_groups = max((len(a) for a in voice_accum), default=0)
-    for g in range(max_groups):
-        for v, voice in enumerate(voices):
-            if g < len(voice_accum[v]):
-                group_line = voice_accum[v][g]
-                is_last = v == len(voices) - 1
-                linebreak = "$" if is_last else ""
-                body_parts.append(
-                    f"[V:{strip_leading_v(voice)}] {_bar_suffix(group_line)}{linebreak}"
-                )
+    max_lines = max((len(a) for a in voice_accum), default=0)
+
+    for v, voice in enumerate(voices):
+        # NOTE: no blank line between voice blocks — abcjs treats a blank
+        # line as end-of-tune and stops processing subsequent voices.
+        # Use the stored declaration if available, otherwise bare V:n.
+        decl = voice_definitions.get(voice, f"V:{strip_leading_v(voice)}")
+        body_parts.append(decl)
+        for i in range(max_lines):
+            if i < len(voice_accum[v]):
+                line_content = voice_accum[v][i]
+                body_parts.append(_bar_suffix(line_content))
+            else:
+                # Pad with a rest to maintain alignment.
+                body_parts.append("z |")
 
     abc = "\n".join(header) + "\n" + "\n".join(body_parts).rstrip() + "\n"
     return abc, diagnostics
