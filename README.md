@@ -39,3 +39,12 @@ It's the bare minimum an ABC file must have to be valid.
 ## Changelog
 
 See the [changelog](CHANGELOG.md) file.
+
+```
+# 打包（在插件根目录运行）
+cd /home/sy/2026/Music/EPR/abcx
+npx vsce package --no-dependencies -o abcx-tools-0.3.0.vsix
+
+# 安装到当前 VS Code（含远程 SSH 主机）
+code --install-extension /home/sy/2026/Music/EPR/abcx/abcx-tools-0.3.0.vsix --force
+```

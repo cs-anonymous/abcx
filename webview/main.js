@@ -2,6 +2,16 @@ const abcjs = window.ABCJS
 const preview = window.__ABC_PREVIEW__ || { abc: "", diagnostics: [] }
 const vscode = acquireVsCodeApi()
 
+// abcjs v6.1.9 doesn't recognise !8va(! / !8vb(! as decorations.
+// Pre-process to text annotation form for rendering only.
+const preprocessOttava = (abc) => {
+	return abc
+		.replace(/!8va\(!/g, '"^8va~"')
+		.replace(/!8va\)!/g, '"^~"')
+		.replace(/!8vb\(!/g, '"^8vb~"')
+		.replace(/!8vb\)!/g, '"^~"')
+}
+
 const paper = document.querySelector("#paper")
 const playButton = document.querySelector("#play")
 const exportMidiButton = document.querySelector("#export-midi")
@@ -57,7 +67,7 @@ const renderMessages = () => {
 const renderScore = () => {
 	try {
 		const foregroundColor = getComputedStyle(document.body).getPropertyValue("--text").trim()
-		const result = abcjs.renderAbc(paper, preview.abc, {
+		const result = abcjs.renderAbc(paper, preprocessOttava(preview.abc), {
 			responsive: "resize",
 			add_classes: true,
 			foregroundColor

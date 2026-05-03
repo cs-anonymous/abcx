@@ -6,6 +6,17 @@ const abcx = require("./abcx")
 const uri = { script: "", styles: "", abcjs: "", abcx: "" }
 let ctx, panel, diagnostics, layoutMode = "original", layoutBars = null, previewDocument = null
 
+// abcjs v6.1.9 doesn't recognise !8va(! / !8vb(! as decorations.
+// Convert to text annotation form for abcjs rendering/MIDI only;
+// stored .abc/.abcx files keep native decorations for round-trip.
+const preprocessOttava = (abc) => {
+	return abc
+		.replace(/!8va\(!/g, '"^8va~"')
+		.replace(/!8va\)!/g, '"^~"')
+		.replace(/!8vb\(!/g, '"^8vb~"')
+		.replace(/!8vb\)!/g, '"^~"')
+}
+
 const activate = (context) => {
 	ctx = context
 	diagnostics = vscode.languages.createDiagnosticCollection("abcx")
@@ -63,7 +74,7 @@ const exportMidi = (abc = getAnalyzedContent().abc, sourcePath = getSourceFilePa
 	const output = getOutputPath(sourcePath, ".mid")
 	const midi = Buffer.from(
 		abcjs.synth.getMidiFile(
-			abc, {
+			preprocessOttava(abc), {
 				midiOutputType: "binary",
 				fileName: file + ".mid"
 			}

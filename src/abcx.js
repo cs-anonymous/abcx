@@ -52,18 +52,30 @@
 			maxNotesPerLine
 		})
 
-		if (options.abcjs) {
-			try {
-				const parsed = options.abcjs.parseOnly(abc)
-				for (const tune of parsed || []) {
-					for (const warning of tune.warnings || []) {
-						addDiagnostic(diagnostics, "warning", 0, 0, cleanAbcjsWarning(warning))
-					}
+	// Pre-process ottava decorations for abcjs v6.1.9 compatibility.
+	// Converts native !8va(! / !8va)! / !8vb(! / !8vb)! to text annotation
+	// form that abcjs understands. The returned ABC keeps native decorations
+	// for round-trip; only the abcjs parse/render path uses this.
+	const preprocessOttavaForAbcjs = (abc) => {
+		return abc
+			.replace(/!8va\(!/g, '"^8va~"')
+			.replace(/!8va\)!/g, '"^~"')
+			.replace(/!8vb\(!/g, '"^8vb~"')
+			.replace(/!8vb\)!/g, '"^~"')
+	}
+
+	if (options.abcjs) {
+		try {
+			const parsed = options.abcjs.parseOnly(preprocessOttavaForAbcjs(abc))
+			for (const tune of parsed || []) {
+				for (const warning of tune.warnings || []) {
+					addDiagnostic(diagnostics, "warning", 0, 0, cleanAbcjsWarning(warning))
 				}
-			} catch (err) {
-				addDiagnostic(diagnostics, "error", 0, 0, err && err.message ? err.message : String(err))
 			}
+		} catch (err) {
+			addDiagnostic(diagnostics, "error", 0, 0, err && err.message ? err.message : String(err))
 		}
+	}
 
 		return {
 			abc,
@@ -170,6 +182,7 @@
 		const voiceDefinitions = new Set()
 		let keyLine = null
 		let hasScore = false
+		let lastVoiceHeaderIndex = -1
 
 		for (const item of state.prelude) {
 			const trimmed = item.text.trim()
@@ -177,10 +190,12 @@
 			if (trimmed.startsWith("%%score")) {
 				header.push(item.text)
 				hasScore = true
+				lastVoiceHeaderIndex = -1
 				continue
 			}
 			if (/^K:/.test(trimmed)) {
 				keyLine = item.text
+				lastVoiceHeaderIndex = -1
 				continue
 			}
 			const voice = item.text.match(/^(\s*)V:\s*([^\s]+)(.*)$/)
@@ -188,6 +203,20 @@
 				const normalized = normalizeVoiceName(voice[2])
 				voiceDefinitions.add(normalized)
 				header.push(`${voice[1]}V:${stripLeadingV(normalized)}${voice[3]}`)
+				lastVoiceHeaderIndex = header.length - 1
+				continue
+			}
+			// Per-voice L: between a V: declaration and the K: line.
+			// abcjs v6.1.9 mis-applies a standalone L: in that position as a
+			// global default, breaking note durations in other voices and
+			// producing "pitch is undefined" debug glyphs for oversized rests.
+			// Fold it into the preceding V: line as an inline attribute.
+			const lengthMatch = trimmed.match(/^L:\s*(\d+\/\d+)\s*$/)
+			if (lengthMatch && lastVoiceHeaderIndex >= 0) {
+				const existing = header[lastVoiceHeaderIndex]
+				if (!/\bL:\s*\d+\/\d+/.test(existing)) {
+					header[lastVoiceHeaderIndex] = existing.replace(/\s*$/, "") + ` L:${lengthMatch[1]}`
+				}
 				continue
 			}
 			header.push(item.text)
