@@ -331,42 +331,33 @@
 				continue
 			}
 
-			// First split by ; to get per-voice content.
-			const voiceContents = splitTopLevel(stripComment(text), ";")
-			if (voiceContents.length !== voices.length) {
-				addDiagnostic(
-					context.diagnostics,
-					"error",
-					line.line,
-					0,
-					`Expected ${voices.length} voice(s) from %%score, found ${voiceContents.length}.`
-				)
-			}
+			// Per ABCX v0.1 §3.1: measure is the outer group, voices within
+			// the measure are separated by ";". A visual line may contain
+			// multiple measures, separated by "|".
+			//   "V1m1 ; V2m1 | V1m2 ; V2m2 |"
+			// Split into bar-delimited measures first.
+			const measures = splitMeasures(stripComment(text))
 
-			// For each voice, split its content by | to get per-voice measures.
-			const perVoiceMeasures = voices.map((_, v) =>
-				v < voiceContents.length ? splitMeasures(voiceContents[v]) : []
-			)
-			const maxMeasures = Math.max(...perVoiceMeasures.map((ms) => ms.length), 0)
-
-			// Regroup: for each measure index, concatenate all voices.
 			const perVoice = voices.map(() => "")
 			let lineNotes = 0
-			for (let mIdx = 0; mIdx < maxMeasures; mIdx++) {
-				for (let v = 0; v < voices.length; v++) {
-					const vms = perVoiceMeasures[v]
-					const m = mIdx < vms.length ? vms[mIdx] : null
-					if (m) {
-						perVoice[v] += `${m.prefix}${convertVoiceContent(m.content)}${m.suffix}`
-					} else {
-						perVoice[v] += "z"
-					}
+			for (const m of measures) {
+				const voiceContents = splitTopLevel(m.content, ";")
+				if (voiceContents.length !== voices.length) {
+					addDiagnostic(
+						context.diagnostics,
+						"error",
+						line.line,
+						m.column || 0,
+						`Expected ${voices.length} voice(s) from %%score, found ${voiceContents.length} in this measure.`
+					)
 				}
-				// Count notes in first voice for this measure group.
-				const firstVoiceMeasures = perVoiceMeasures[0]
-				const firstM = mIdx < firstVoiceMeasures.length ? firstVoiceMeasures[mIdx] : null
-				const fc = firstM ? firstM.content : ""
-				lineNotes += countNotes(fc, currentDefaultLength)
+				for (let v = 0; v < voices.length; v++) {
+					const vc = v < voiceContents.length ? voiceContents[v] : ""
+					const trimmed = vc.trim()
+					perVoice[v] += `${m.prefix}${trimmed ? convertVoiceContent(vc) : "z"}${m.suffix}`
+				}
+				const firstVc = voiceContents.length > 0 ? voiceContents[0] : ""
+				lineNotes += countNotes(firstVc, currentDefaultLength)
 			}
 
 			outputLines.push(perVoice.map((p) => p.trim()).join("\t"))
@@ -986,11 +977,9 @@
 
 			const cleaned = stripComment(content).trim()
 			if (!cleaned) continue
-			// Flatten: each source measure -> one ABCX output line.
+			// Each source music line → one row of measures (preserves layout).
 			const measures = splitAbcMeasures(cleaned)
-			for (const ms of measures) {
-				voiceBars.get(voiceName).push([ms])
-			}
+			if (measures.length) voiceBars.get(voiceName).push(measures)
 		}
 
 		const outHeader = headerLines.slice()
@@ -1005,21 +994,34 @@
 			else outHeader.push(scoreLine)
 		}
 
-		const maxBars = Math.max(...voiceOrder.map((v) => voiceBars.get(v).length), 0)
+		// Use the first voice's row count to drive output rows.
+		const primary = voiceOrder[0]
+		const maxRows = primary ? voiceBars.get(primary).length : 0
 		const outBody = []
-		const sep = voiceOrder.length > 1 ? " ; " : ""
 
-		for (let i = 0; i < maxBars; i++) {
-			const parts = voiceOrder.map((v) => {
-				const bars = voiceBars.get(v)
-				const m = i < bars.length ? bars[i] : null
-				if (!m || !m.length) return "z"
-				// No internal bars in ABCX voice content — just notes/rests.
-				return m.map((ms) => `${ms.prefix.replace(/\|+$/, "")}${ms.content.trim()}${ms.suffix.replace(/^\|+/, "")}`).join(" ").trim()
+		for (let rowIdx = 0; rowIdx < maxRows; rowIdx++) {
+			const rowMeasures = voiceOrder.map((v) => {
+				const rows = voiceBars.get(v)
+				return rowIdx < rows.length ? rows[rowIdx] : []
 			})
-			let line = parts.join(sep).trim()
-			if (line && !line.endsWith("|")) line += "|"
-			outBody.push(line)
+			const maxM = Math.max(...rowMeasures.map((mv) => mv.length), 0)
+			if (maxM === 0) continue
+
+			// Opening bar prefix from primary voice's first measure (e.g. "|:").
+			let out = (rowMeasures[0] && rowMeasures[0][0] && rowMeasures[0][0].prefix) || ""
+			for (let mIdx = 0; mIdx < maxM; mIdx++) {
+				const voiceStrs = rowMeasures.map((mv) => {
+					if (mIdx < mv.length) return mv[mIdx].content.trim()
+					return "z"
+				})
+				const group = voiceOrder.length > 1 ? voiceStrs.join(" ; ") : voiceStrs[0]
+				const sfx = (rowMeasures[0] && mIdx < rowMeasures[0].length
+					? rowMeasures[0][mIdx].suffix
+					: "") || "|"
+				if (out && !out.endsWith(" ")) out += " "
+				out += group + " " + sfx
+			}
+			outBody.push(out.trim())
 		}
 
 		const middleStr = middleLines.length ? middleLines.join("\n") + "\n" : ""
