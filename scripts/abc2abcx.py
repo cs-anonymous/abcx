@@ -313,94 +313,16 @@ def rewrite_durations(content: str, factor_num: int, factor_den: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# normalize_abc -- unify per-voice L: across an ABC score
+# normalize_abc -- preserve explicit M:/L: switches while normalizing line endings
 # ---------------------------------------------------------------------------
 
 def normalize_abc(source: str) -> str:
-    """Detect per-voice L: declarations and rewrite all durations to a single
-    unified L: (the finest one used). Returns source unchanged if all voices
-    already share the same L:.
+    """Return source with normalized line endings.
+
+    ABCX allows synchronized M:/L: changes inside a tune, so we preserve them
+    instead of collapsing the score to one global default length.
     """
-    normalized = (source or "").replace("\r\n", "\n")
-    lines = normalized.split("\n")
-
-    global_l = Fraction(1, 8)
-    header_lines: list = []
-    body_lines: list = []
-    in_body = False
-    for line in lines:
-        s = line.strip()
-        if not in_body:
-            m = L_RE.match(s)
-            if m:
-                global_l = Fraction(int(m.group(1)), int(m.group(2)))
-            header_lines.append(line)
-            if s.startswith("K:"):
-                in_body = True
-            continue
-        body_lines.append(line)
-
-    voice_ls: dict = {}
-    info: list = []
-    current_voice: Optional[str] = None
-    current_l = global_l
-    used_dens: set = {global_l.denominator}
-
-    for line in body_lines:
-        s = line.strip()
-        m = V_FIELD_RE.match(s)
-        if m:
-            current_voice = m.group(1)
-            current_l = voice_ls.get(current_voice, global_l)
-            info.append({"line": line, "kind": "vfield"})
-            continue
-        m = L_RE.match(s)
-        if m:
-            current_l = Fraction(int(m.group(1)), int(m.group(2)))
-            used_dens.add(current_l.denominator)
-            if current_voice is not None:
-                voice_ls[current_voice] = current_l
-            else:
-                global_l = current_l
-            info.append({"line": line, "kind": "lfield"})
-            continue
-        if not s or s.startswith("%") or FIELD_RE.match(s):
-            info.append({"line": line, "kind": "field"})
-            continue
-        info.append({"line": line, "kind": "music", "L": current_l})
-
-    if len(used_dens) <= 1:
-        return source
-
-    unified_den = max(used_dens)
-    unified_l = Fraction(1, unified_den)
-
-    out_header: list = []
-    has_l = False
-    for line in header_lines:
-        s = line.strip()
-        if L_RE.match(s):
-            out_header.append(f"L:{unified_l.numerator}/{unified_l.denominator}")
-            has_l = True
-            continue
-        if s.startswith("K:") and not has_l:
-            out_header.append(f"L:{unified_l.numerator}/{unified_l.denominator}")
-            has_l = True
-        out_header.append(line)
-
-    out_body: list = []
-    for it in info:
-        if it["kind"] == "lfield":
-            continue
-        if it["kind"] == "music":
-            old_l: Fraction = it["L"]
-            fnum = unified_l.denominator * old_l.numerator
-            fden = old_l.denominator * unified_l.numerator
-            out_body.append(rewrite_durations(it["line"], fnum, fden))
-        else:
-            out_body.append(it["line"])
-
-    return "\n".join(out_header) + "\n" + "\n".join(out_body) + "\n"
+    return (source or "").replace("\r\n", "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +343,7 @@ def abc_to_abcx(source: str) -> str:
 
     normalized = (source or "").replace("\r\n", "\n")
     lines = normalized.split("\n")
+    header_l = Fraction(1, 8)
     header_lines: list = []
     middle_lines: list = []
     raw_body: list = []
@@ -431,6 +354,9 @@ def abc_to_abcx(source: str) -> str:
         s = line.strip()
         if phase == "header":
             header_lines.append(line)
+            m = L_RE.match(s)
+            if m:
+                header_l = Fraction(int(m.group(1)), int(m.group(2)))
             if s.startswith("K:"):
                 phase = "middle"
                 saw_k = True
@@ -462,6 +388,7 @@ def abc_to_abcx(source: str) -> str:
     voice_order: list = []
     # voice_rows[voice] = list of rows, each row = list of Measure
     voice_rows: dict = {}
+    voice_l: dict = {}
 
     def ensure_voice(raw: str) -> str:
         norm = normalize_voice_name(raw)
@@ -475,6 +402,17 @@ def abc_to_abcx(source: str) -> str:
         if m:
             ensure_voice(m.group(1))
 
+    middle_voice = voice_order[0] if voice_order else None
+    for line in middle_lines:
+        s = line.strip()
+        m = V_FIELD_RE.match(s)
+        if m:
+            middle_voice = ensure_voice(m.group(1))
+            continue
+        m = L_RE.match(s)
+        if m and middle_voice is not None:
+            voice_l[middle_voice] = Fraction(int(m.group(1)), int(m.group(2)))
+
     # Filter out bare V: lines from middle_lines
     _BARE_V_RE = re.compile(r"^V:\s*\S+\s*$")
     filtered_middle = []
@@ -485,6 +423,7 @@ def abc_to_abcx(source: str) -> str:
     middle_lines = filtered_middle
 
     current_voice = voice_order[0] if voice_order else ensure_voice("1")
+    current_l = header_l
 
     for line in merged:
         s = line.strip()
@@ -493,6 +432,12 @@ def abc_to_abcx(source: str) -> str:
         m = V_FIELD_RE.match(s)
         if m:
             current_voice = ensure_voice(m.group(1))
+            current_l = voice_l.get(current_voice, header_l)
+            continue
+        m = L_RE.match(s)
+        if m:
+            current_l = Fraction(int(m.group(1)), int(m.group(2)))
+            voice_l[current_voice] = current_l
             continue
         im = INLINE_V_RE.match(s)
         if im:
@@ -504,6 +449,13 @@ def abc_to_abcx(source: str) -> str:
         cleaned = strip_comment(content).strip()
         if not cleaned:
             continue
+        active_l = voice_l.get(voice_name, header_l)
+        if active_l != header_l:
+            cleaned = rewrite_durations(
+                cleaned,
+                header_l.denominator * active_l.numerator,
+                active_l.denominator * header_l.numerator,
+            )
         # Each source music line → one row of measures.
         measures = split_abc_measures(cleaned)
         if measures:
@@ -569,7 +521,12 @@ def abc_to_abcx(source: str) -> str:
             out += group + " " + sfx
         out_body.append(out.strip())
 
-    middle_str = ("\n".join(middle_lines) + "\n") if middle_lines else ""
+    preserved_middle = []
+    for line in middle_lines:
+        if L_RE.match(line.strip()):
+            continue
+        preserved_middle.append(line)
+    middle_str = ("\n".join(preserved_middle) + "\n") if preserved_middle else ""
     return "\n".join(out_header) + "\n" + middle_str + "\n".join(out_body) + "\n"
 
 
@@ -594,7 +551,7 @@ def has_abcx_body(source: str) -> bool:
 
 
 def to_standard_abcx(source: str, *, validate: bool = True) -> str:
-    """Convert any ABC input to standard ABCX (unified L: across voices)."""
+    """Convert any ABC input to standard ABCX while preserving synchronized M:/L: changes."""
     if not (source or "").strip():
         raise AbcError("Empty input.")
     normalized = (source or "").replace("\r\n", "\n")
