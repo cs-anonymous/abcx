@@ -121,45 +121,22 @@
 		}
 	}
 
-	const parseScoreVoices = (score) => {
-		const voices = []
-		const seen = new Set()
+		const parseScoreVoices = (score) => {
+			const voices = []
+			const seen = new Set()
+			let text = score || ""
+			text = text.replace(/^\s*%%score\s+/, "")
 
-		let text = score || ""
-		text = text.replace(/^\s*%%score\s+/, "")
-
-		// Extract voices from { ... } block if present (xml2abc format).
-		const braceMatch = text.match(/\{([^}]*)\}/)
-		if (braceMatch) {
-			const inner = braceMatch[1]
-			for (const group of inner.split("|")) {
-				const trimmed = group.trim()
-				const stripped = trimmed.startsWith("(") && trimmed.endsWith(")")
-					? trimmed.slice(1, -1) : trimmed
-				for (const tok of stripped.split(/\s+/).filter(Boolean)) {
-					const normalized = normalizeVoiceName(tok)
-					if (normalized && !seen.has(normalized)) {
-						seen.add(normalized)
-						voices.push(normalized)
-					}
-				}
-			}
-		}
-
-		// Also collect voices from (...) groups outside braces.
-		const parenMatches = text.matchAll(/\(([^)]*)\)/g)
-		for (const match of parenMatches) {
-			for (const tok of match[1].trim().split(/\s+/).filter(Boolean)) {
-				const normalized = normalizeVoiceName(tok)
+			for (const match of text.matchAll(/\bv?\d+\b/gi)) {
+				const normalized = normalizeVoiceName(match[0])
 				if (normalized && !seen.has(normalized)) {
 					seen.add(normalized)
 					voices.push(normalized)
 				}
 			}
-		}
 
-		return voices
-	}
+			return voices
+		}
 
 	const inferVoicesFromBody = (bodyLines) => {
 		let count = 1
@@ -175,6 +152,41 @@
 		return match ? `V${match[1]}` : String(name).trim()
 	}
 
+	// Infer clef from %%score layout for piano scores
+	const inferClefFromScore = (scoreLine, voice) => {
+		if (!scoreLine) return "treble"
+
+		const text = scoreLine.trim().replace(/^\s*%%score\s+/, "")
+		const braceMatch = text.match(/\{([^}]*)\}/)
+
+		if (braceMatch) {
+			const inner = braceMatch[1]
+			const groups = inner.split("|")
+
+			// First group (left of |) = treble
+			if (groups.length >= 1) {
+				const leftVoices = []
+				const leftText = groups[0].replace(/[()]/g, " ")
+				for (const tok of leftText.split(/\s+/)) {
+					if (tok) leftVoices.push(normalizeVoiceName(tok))
+				}
+				if (leftVoices.includes(voice)) return "treble"
+			}
+
+			// Second group (right of |) = bass
+			if (groups.length >= 2) {
+				const rightVoices = []
+				const rightText = groups[1].replace(/[()]/g, " ")
+				for (const tok of rightText.split(/\s+/)) {
+					if (tok) rightVoices.push(normalizeVoiceName(tok))
+				}
+				if (rightVoices.includes(voice)) return "bass"
+			}
+		}
+
+		return "treble"
+	}
+
 	const buildAbc = (state, voices, bodyResult, linebreakChar, layout, layoutOpts) => {
 		const { lines: bodyLines, notesPerLine } = bodyResult
 		const { barsPerLine, maxNotesPerLine } = layoutOpts || {}
@@ -182,6 +194,7 @@
 		const voiceDefinitions = new Set()
 		let keyLine = null
 		let hasScore = false
+		let scoreLine = null
 		let lastVoiceHeaderIndex = -1
 
 		for (const item of state.prelude) {
@@ -190,6 +203,7 @@
 			if (trimmed.startsWith("%%score")) {
 				header.push(item.text)
 				hasScore = true
+				scoreLine = item.text
 				lastVoiceHeaderIndex = -1
 				continue
 			}
@@ -228,7 +242,14 @@
 
 		for (const voice of voices) {
 			if (!voiceDefinitions.has(voice)) {
-				header.push(`V:${stripLeadingV(voice)}`)
+				const clef = inferClefFromScore(scoreLine, voice)
+				const voiceNum = stripLeadingV(voice)
+				const voiceDef = `V:${voiceNum} ${clef}`
+				header.push(voiceDef)
+				// Add standard piano MIDI settings
+				header.push("%%MIDI program 0")
+				header.push("%%MIDI control 7 100")
+				header.push("%%MIDI control 10 64")
 			}
 		}
 

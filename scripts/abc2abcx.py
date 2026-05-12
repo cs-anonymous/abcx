@@ -334,6 +334,10 @@ def abc_to_abcx(source: str) -> str:
 
     KEY: preserves the source line structure — each source music line
     becomes one ABCX output line containing the same number of measures.
+
+    Removes redundant piano-specific information:
+    - %%MIDI directives (program, channel, control)
+    - Explicit V: clef definitions (inferred from %%score)
     """
     if has_abcx_body(source):
         return source
@@ -353,6 +357,9 @@ def abc_to_abcx(source: str) -> str:
     for line in lines:
         s = line.strip()
         if phase == "header":
+            # Skip redundant MIDI directives
+            if s.startswith("%%MIDI"):
+                continue
             header_lines.append(line)
             m = L_RE.match(s)
             if m:
@@ -365,6 +372,9 @@ def abc_to_abcx(source: str) -> str:
             is_field = bool(FIELD_RE.match(s))
             is_directive = s.startswith("%")
             if not s or is_field or is_directive:
+                # Skip redundant MIDI directives and bare V: definitions
+                if s.startswith("%%MIDI"):
+                    continue
                 middle_lines.append(line)
                 continue
             phase = "body"
@@ -413,12 +423,23 @@ def abc_to_abcx(source: str) -> str:
         if m and middle_voice is not None:
             voice_l[middle_voice] = Fraction(int(m.group(1)), int(m.group(2)))
 
-    # Filter out bare V: lines from middle_lines
+    # Filter out bare V: lines and V: lines with only clef/name from middle_lines
+    # Keep only V: lines that have essential non-redundant information
+    _V_WITH_CLEF_RE = re.compile(r"^V:\s*\S+\s+(treble|bass|alto|tenor|perc|tab|none)(\s|$)")
     _BARE_V_RE = re.compile(r"^V:\s*\S+\s*$")
     filtered_middle = []
     for line in middle_lines:
-        if _BARE_V_RE.match(line.strip()):
+        s = line.strip()
+        # Skip bare V: lines
+        if _BARE_V_RE.match(s):
             continue
+        # Skip V: lines with only clef and optional name (redundant for piano)
+        if _V_WITH_CLEF_RE.match(s):
+            # Check if it only has clef and name, no other attributes
+            # V:1 treble nm="Piano" -> skip
+            # V:1 treble transpose=2 -> keep
+            if not any(attr in s for attr in ['transpose=', 'octave=', 'clef=', 'stafflines=', 'strings=', 'capo=']):
+                continue
         filtered_middle.append(line)
     middle_lines = filtered_middle
 

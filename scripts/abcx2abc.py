@@ -119,25 +119,55 @@ def parse_score_voices(score_line: str) -> list:
     seen: set = set()
     text = score_line or ""
     text = re.sub(r"^\s*%%score\s+", "", text)
+    # ABC %%score permits a mix of grouping syntax, e.g.
+    # `{ ( 1 2 3 ) ( 4 5 ) }`, `{ ( 1 4 ) | ( 2 3 ) }`, or `( 1 2 ) 3`.
+    # For ABCX voice demultiplexing we only need the ordered unique voice ids;
+    # braces, parentheses, and staff bars are layout hints.
+    for tok in re.findall(r"\bv?\d+\b", text, flags=re.IGNORECASE):
+        norm = normalize_voice_name(tok)
+        if norm and norm not in seen:
+            seen.add(norm)
+            voices.append(norm)
+    return voices
+
+
+def infer_clef_from_score(score_line: str, voice: str) -> str:
+    """Infer clef for a voice from %%score layout.
+
+    For piano scores with pattern { (V1 V3) | (V2 V4) }:
+    - Left group (before |) = treble (right hand)
+    - Right group (after |) = bass (left hand)
+    """
+    if not score_line:
+        return "treble"
+
+    text = score_line.strip()
+    text = re.sub(r"^\s*%%score\s+", "", text)
+
+    # Extract brace content: { (V1 V3) | (V2 V4) }
     brace_m = re.search(r"\{([^}]*)\}", text)
     if brace_m:
         inner = brace_m.group(1)
-        for group in inner.split("|"):
-            group = group.strip()
-            if group.startswith("(") and group.endswith(")"):
-                group = group[1:-1]
-            for tok in group.split():
-                norm = normalize_voice_name(tok)
-                if norm and norm not in seen:
-                    seen.add(norm)
-                    voices.append(norm)
-    for m in re.finditer(r"\(([^)]*)\)", text):
-        for tok in m.group(1).strip().split():
-            norm = normalize_voice_name(tok)
-            if norm and norm not in seen:
-                seen.add(norm)
-                voices.append(norm)
-    return voices
+        groups = inner.split("|")
+
+        # First group (left of |) = treble
+        if len(groups) >= 1:
+            left_voices = []
+            for tok in groups[0].replace("(", "").replace(")", "").split():
+                left_voices.append(normalize_voice_name(tok))
+            if voice in left_voices:
+                return "treble"
+
+        # Second group (right of |) = bass
+        if len(groups) >= 2:
+            right_voices = []
+            for tok in groups[1].replace("(", "").replace(")", "").split():
+                right_voices.append(normalize_voice_name(tok))
+            if voice in right_voices:
+                return "bass"
+
+    # Default to treble
+    return "treble"
 
 
 def is_abcx(source: str) -> bool:
@@ -461,13 +491,31 @@ def abcx_to_abc(source: str, *, validate: bool = True) -> tuple:
         header.append(key_line)
     header.append("I:linebreak $")
 
-    # Emit voice blocks.
+    # Emit voice blocks with auto-generated clef and MIDI settings.
     body_parts: list = []
     max_lines = max((len(a) for a in voice_accum), default=0)
 
     for v, voice in enumerate(voices):
-        decl = voice_definitions.get(voice, f"V:{strip_leading_v(voice)}")
+        # Get or generate voice definition
+        if voice in voice_definitions:
+            decl = voice_definitions[voice]
+        else:
+            # Auto-generate voice definition with inferred clef
+            clef = infer_clef_from_score(score_line, voice)
+            voice_num = strip_leading_v(voice)
+            decl = f"V:{voice_num} {clef}"
+            # Add name for first voice
+            if v == 0:
+                decl += ' nm="Piano"'
+
         body_parts.append(decl)
+
+        # Add standard piano MIDI settings
+        body_parts.append("%%MIDI program 0")
+        body_parts.append("%%MIDI control 7 100")
+        body_parts.append("%%MIDI control 10 64")
+
+        # Add music lines
         for i in range(max_lines):
             if i < len(voice_accum[v]):
                 line_content = voice_accum[v][i]

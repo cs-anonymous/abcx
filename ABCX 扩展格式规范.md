@@ -493,9 +493,146 @@ ABC:   [V:1] c d e f g a b c
 
 ---
 
-## 七、版本历史
+## 七、钢琴作品的头部优化规则
+
+### 7.1 冗余信息自动推断
+
+为了简化 ABCX 格式，特别是钢琴作品，转换工具实现了以下优化：
+
+#### 7.1.1 ABC → ABCX 转换时删除的冗余信息
+
+**删除的内容：**
+1. 所有 `%%MIDI` 指令（program, channel, control）
+2. 仅包含谱号和名称的 `V:` 定义行（如 `V:1 treble nm="Piano"`）
+3. 保留包含特殊属性的 `V:` 行（如 transpose, octave, stafflines, strings, capo 等）
+
+**原因：**
+- 所有钢琴作品的 MIDI 设置都相同：
+  - `%%MIDI program 0` - Acoustic Grand Piano
+  - `%%MIDI channel 1` - 默认通道
+  - `%%MIDI control 7 100` - 音量 100
+  - `%%MIDI control 10 64` - 声像居中
+- 谱号可以从 `%%score` 布局自动推断
+
+**示例：**
+
+优化前的 ABC 头部（冗余）：
+```abc
+X:1
+T:Étude in A Minor
+%%score { ( 1 3 ) | ( 2 4 ) }
+L:1/16
+Q:1/4=48
+M:4/4
+K:C
+V:1 treble nm="Piano"
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+V:3 treble 
+%%MIDI channel 1
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+V:2 bass 
+%%MIDI channel 1
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+V:4 bass 
+%%MIDI channel 1
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+```
+
+优化后的 ABCX 头部（简洁）：
+```abcx
+X:1
+T:Étude in A Minor
+T:Opus 25 No. 11
+%%score { ( 1 3 ) | ( 2 4 ) }
+L:1/16
+Q:1/4=48
+M:4/4
+K:C
+```
+
+#### 7.1.2 ABCX → ABC 转换时自动推断
+
+**谱号推断规则：**
+
+从 `%%score` 布局自动推断每个声部的谱号：
+
+```abcx
+%%score { ( V1 V3 ) | ( V2 V4 ) }
+```
+
+- `|` 左边的组（V1, V3）→ `treble`（右手/高音谱表）
+- `|` 右边的组（V2, V4）→ `bass`（左手/低音谱表）
+
+**自动生成的内容：**
+
+转回 ABC 时，自动为每个声部生成：
+
+```abc
+V:1 treble nm="Piano"    # 第一声部添加乐器名称
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+
+V:3 treble               # 其他声部只添加谱号
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+
+V:2 bass
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+
+V:4 bass
+%%MIDI program 0
+%%MIDI control 7 100
+%%MIDI control 10 64
+```
+
+#### 7.1.3 保留的特殊属性
+
+以下 `V:` 属性不会被删除，因为它们包含非冗余信息：
+
+- `transpose=` - 移调
+- `octave=` - 八度变化
+- `clef=` - 非标准谱号
+- `stafflines=` - 谱线数量
+- `strings=` - 弦乐器定弦
+- `capo=` - 变调夹位置
+
+**示例：**
+```abcx
+V:1 treble transpose=2    # 保留：包含移调信息
+V:2 bass octave=-1         # 保留：包含八度变化
+```
+
+### 7.2 优化效果
+
+- **文件大小：** 减少约 3-5%
+- **可读性：** 头部更简洁，易于理解和编辑
+- **可维护性：** 修改 `%%score` 时无需手动更新所有 `V:` 定义
+- **向后兼容：** 转回 ABC 时自动恢复所有信息
+- **无损转换：** 往返转换保持音乐内容完全一致
+
+### 7.3 实现工具
+
+- `abc2abcx.py` - ABC → ABCX 转换（自动删除冗余信息）
+- `abcx2abc.py` - ABCX → ABC 转换（自动推断并生成信息）
+
+---
+
+## 八、版本历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 0.1 | 2026-04-28 | 初始版本：定义 `;` 声部分隔、inline `&`、`%%score` 分组 |
 | 0.2 | 2026-05-01 | 添加曲内 `[M:]` / `[L:]` inline 拍号和默认长度变化；拍号/默认长度不跨小节重置 |
+| 0.3 | 2026-05-07 | 添加钢琴作品头部优化规则：自动删除和推断冗余的 MIDI 设置和谱号定义 |
