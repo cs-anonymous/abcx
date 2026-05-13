@@ -146,6 +146,81 @@ def parse_score_voices(score_line: str) -> list:
     return voices
 
 
+def _fix_score_directive(score_line: str, voice_order: list) -> str:
+    """Fix %%score directive format for grand staff notation.
+
+    xml2abc outputs patterns like:
+    - `{ 1 | 2 }` for 2-voice scores → keep as-is (no parentheses needed for single voices)
+    - `{ ( 1 3 ) | 2 }` for mixed format → needs to become `{ (1 3) | 2 }` (remove extra spaces)
+    - `(1) (2)` for 2-voice without braces → needs to become `{ 1 | 2 }` (add braces and pipe)
+
+    Examples:
+        { 1 | 2 } → { 1 | 2 }  (unchanged - single voices don't need parentheses)
+        { ( 1 4 ) | ( 2 3 ) } → { (1 4) | (2 3) }  (FIXED - remove extra spaces)
+        { ( 1 3 ) | 2 } → { (1 3) | 2 }  (FIXED - remove extra spaces)
+        { (1 3 5) | (2 4) } → { (1 3 5) | (2 4) }  (unchanged)
+        (1) (2) → { 1 | 2 }  (FIXED - add braces and pipe for 2-voice)
+    """
+    # Remove %%score prefix
+    content = re.sub(r"^\s*%%score\s+", "", score_line.strip())
+
+    # Check if it has braces (grand staff format)
+    brace_match = re.match(r"^\{\s*(.+?)\s*\}$", content)
+
+    if brace_match:
+        # Grand staff format: { ... | ... }
+        inner = brace_match.group(1)
+        groups = inner.split("|")
+        fixed_groups = []
+
+        for group in groups:
+            group = group.strip()
+
+            # Check if group has parentheses with extra spaces inside
+            # Pattern: ( digit digit ... ) with spaces
+            if re.match(r"^\(\s+[0-9\s]+\s+\)$", group):
+                # Has parentheses with extra spaces - normalize
+                voices = re.findall(r"\d+", group)
+                if len(voices) == 1:
+                    # Single voice - remove parentheses
+                    fixed_groups.append(voices[0])
+                else:
+                    # Multiple voices - keep parentheses, remove extra spaces
+                    fixed_groups.append(f"({' '.join(voices)})")
+            elif re.match(r"^\([0-9\s]+\)$", group):
+                # Has parentheses - check if single or multiple voices
+                voices = re.findall(r"\d+", group)
+                if len(voices) == 1:
+                    # Single voice - remove parentheses
+                    fixed_groups.append(voices[0])
+                else:
+                    # Multiple voices - keep parentheses
+                    fixed_groups.append(f"({' '.join(voices)})")
+            elif re.match(r"^[0-9\s]+$", group):
+                # Bare voice numbers - keep as-is if single, add parentheses if multiple
+                voices = group.split()
+                if len(voices) == 1:
+                    fixed_groups.append(voices[0])
+                else:
+                    fixed_groups.append(f"({' '.join(voices)})")
+            else:
+                # Unknown format, keep as-is
+                fixed_groups.append(group)
+
+        return f"%%score {{ {' | '.join(fixed_groups)} }}"
+
+    # Check if it's a simple 2-voice format without braces: (1) (2)
+    # This should be converted to grand staff format: { 1 | 2 }
+    simple_match = re.match(r"^\((\d+)\)\s+\((\d+)\)$", content)
+    if simple_match:
+        voice1 = simple_match.group(1)
+        voice2 = simple_match.group(2)
+        return f"%%score {{ {voice1} | {voice2} }}"
+
+    # All other cases: return unchanged
+    return score_line.strip()
+
+
 # ---------------------------------------------------------------------------
 # Bar splitter
 # ---------------------------------------------------------------------------
@@ -168,6 +243,8 @@ def _is_bar_start(text: str, i: int, quote: bool, bracket: int) -> bool:
         return True
     if ch == "[" and nxt == "|":
         return True
+    if ch == ":" and nxt == ":":
+        return True
     return False
 
 
@@ -176,15 +253,24 @@ def _consume_bar(text: str, i: int) -> tuple:
     if i < len(text) and text[i] in (":", "["):
         delim += text[i]
         i += 1
-    if i < len(text) and text[i] == "|":
+    if i < len(text) and text[i] in ("|", ":"):
         delim += text[i]
         i += 1
-    while i < len(text) and BAR_CHAR_RE.match(text[i]):
+    while i < len(text) and text[i] in ("|", ":"):
         delim += text[i]
         i += 1
     if i < len(text) and text[i].isdigit():
         delim += text[i]
         i += 1
+    # Also consume trailing bar chars after whitespace (e.g. `| ]`).
+    # Only consume `]` or `:`, NOT `[` which starts chord brackets.
+    while i < len(text) and text[i] == " ":
+        i += 1
+        if i < len(text) and text[i] in ("]", ":"):
+            delim += text[i]
+            i += 1
+        else:
+            break
     return delim, i
 
 
@@ -195,6 +281,22 @@ def split_abc_measures(text: str) -> list:
     i = 0
     quote = False
     bracket = 0
+    def _append(prefix: str, content: str, suffix: str) -> None:
+        """Append a measure, filtering out non-musical segments."""
+        stripped = content.strip()
+        if not stripped:
+            return
+        # Skip linebreak-only segments.
+        if stripped == '$':
+            return
+        # Skip ABC field directives (L:, M:, K:, etc.) that leaked into music.
+        if FIELD_RE.match(stripped):
+            return
+        # Skip comment-only segments.
+        if stripped.startswith('%'):
+            return
+        result.append(Measure(prefix=prefix, content=stripped, suffix=suffix))
+
     while i < len(text):
         ch = text[i]
         if ch == '"':
@@ -216,17 +318,19 @@ def split_abc_measures(text: str) -> list:
         if _is_bar_start(text, i, quote, bracket):
             delim, i = _consume_bar(text, i)
             if not content.strip() and not prefix:
+                # Consecutive bars — absorb into prefix, don't create empty measure.
                 prefix = delim
+            elif not content.strip() and prefix:
+                # Consecutive bars with existing prefix — merge into prefix.
+                prefix = (prefix + ' ' + delim).strip()
             else:
-                result.append(Measure(prefix=prefix, content=content.strip(),
-                                       suffix=delim))
+                _append(prefix, content, delim)
                 prefix = ""
                 content = ""
         else:
             content += ch
             i += 1
-    if content.strip():
-        result.append(Measure(prefix=prefix, content=content.strip(), suffix=""))
+    _append(prefix, content, "")
     return result
 
 
@@ -313,19 +417,6 @@ def rewrite_durations(content: str, factor_num: int, factor_den: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# normalize_abc -- preserve explicit M:/L: switches while normalizing line endings
-# ---------------------------------------------------------------------------
-
-def normalize_abc(source: str) -> str:
-    """Return source with normalized line endings.
-
-    ABCX allows synchronized M:/L: changes inside a tune, so we preserve them
-    instead of collapsing the score to one global default length.
-    """
-    return (source or "").replace("\r\n", "\n")
-
-
-# ---------------------------------------------------------------------------
 # ABC -> ABCX  (row-preserving!)
 # ---------------------------------------------------------------------------
 
@@ -339,9 +430,6 @@ def abc_to_abcx(source: str) -> str:
     - %%MIDI directives (program, channel, control)
     - Explicit V: clef definitions (inferred from %%score)
     """
-    if has_abcx_body(source):
-        return source
-
     if not (source or "").strip():
         raise AbcError("Empty input.")
 
@@ -483,70 +571,173 @@ def abc_to_abcx(source: str) -> str:
             voice_rows[voice_name].append(measures)
 
     out_header = list(header_lines)
-    has_score = any(l.strip().startswith("%%score") for l in out_header)
-    if not has_score:
+
+    # FIX 1: Fix %%score directive format
+    # xml2abc generates %%score with correct structure but missing parentheses
+    # Example: { 1 | 2 } should be { (1) | (2) }
+    # Example: { (1 3 5) | (2 4) } is already correct
+    # We need to:
+    # 1. Find existing %%score line
+    # 2. Parse and preserve braces { } and pipe | structure
+    # 3. Ensure each voice group has parentheses
+    # 4. Normalize voice names (1 → V1)
+
+    existing_score_idx = -1
+    existing_score_line = None
+    for i, line in enumerate(out_header):
+        if line.strip().startswith("%%score"):
+            existing_score_idx = i
+            existing_score_line = line.strip()
+            break
+
+    if existing_score_line:
+        # Parse the existing %%score line and fix it
+        score_line = _fix_score_directive(existing_score_line, voice_order)
+        out_header[existing_score_idx] = score_line
+    else:
+        # No %%score line exists, generate one
+        # For 2-voice scores, use grand staff format
+        if len(voice_order) == 2:
+            score_line = f"%%score {{ ({voice_order[0]}) | ({voice_order[1]}) }}"
+        else:
+            score_line = "%%score " + " ".join(f"({v})" for v in voice_order)
+
+        # Insert before K:
         k_idx = -1
         for i in range(len(out_header) - 1, -1, -1):
             if out_header[i].strip().startswith("K:"):
                 k_idx = i
                 break
-        score_line = "%%score " + " ".join(f"({v})" for v in voice_order)
         if k_idx >= 0:
             out_header.insert(k_idx, score_line)
         else:
             out_header.append(score_line)
 
-    # Use the first voice's row count as the output row count.
-    primary = voice_order[0] if voice_order else None
-    max_rows = len(voice_rows.get(primary, []))
+    # Flatten each voice's rows into a single measure list and align by index.
+    # xml2abc can produce different numbers of music lines per voice (line-breaks
+    # are inserted independently), but the measure order is the same — measure N
+    # in V:1 corresponds to measure N in V:2.  We simply concatenate all measures
+    # from each voice and align 1:1 by index.
+    voice_measures: dict[str, list] = {}
+    for v in voice_order:
+        flat: list = []
+        for row in voice_rows.get(v, []):
+            flat.extend(row)
+        # Remove $-only measures (linebreak markers that became standalone measures)
+        filtered: list = []
+        for m in flat:
+            stripped = m.content.strip()
+            if stripped == '$':
+                # Linebreak-only — merge into previous measure's suffix
+                if filtered:
+                    prev = filtered[-1]
+                    prev.suffix = (prev.suffix + ' $').strip()
+                continue
+            filtered.append(m)
+        voice_measures[v] = filtered
 
+        # Merge orphaned first-ending markers (content is just a digit like "1"
+        # optionally followed by a comment `%N`) and stray repeat-end `:`
+        # markers (produced when `:|` is split by bar parsing) into the
+        # previous measure's suffix. xml2abc puts the first ending's music on
+        # the line BEFORE the `|1` marker in some voices, and splits `:|` into
+        # separate bar and `:` segments.
+        merged: list = []
+        for m in filtered:
+            c = m.content.strip()
+            # Match: orphaned first-ending digit, or stray `:` from repeat split.
+            is_orphan = (
+                re.match(r"^\d+(\s*%\s*\d+)?\s*$", c)
+                or c == ':'
+            )
+            if is_orphan and not m.suffix and merged:
+                prev = merged[-1]
+                if m.prefix:
+                    prev.suffix = (prev.suffix + ' ' + m.prefix).strip()
+            else:
+                merged.append(m)
+        voice_measures[v] = merged
+
+    # FIX 2: Extract tempo/expression marks from first measure and move to header
+    # Tempo marks like "^Allegro", "^Andante", etc. should be in the header as %%text
+    # directives, not in the first measure, since they apply to the entire piece.
+    tempo_marks = []
+    if voice_order and voice_order[0] in voice_measures:
+        first_voice_measures = voice_measures[voice_order[0]]
+        if first_voice_measures:
+            first_measure = first_voice_measures[0]
+            content = first_measure.content
+            # Extract tempo marks: "^text" or "^text with spaces" at the start
+            # Match patterns like "^Allegro", "^Lento, ma non troppo", etc.
+            tempo_pattern = re.compile(r'^("(?:\^|_)[^"]+"\s*)+')
+            match = tempo_pattern.match(content)
+            if match:
+                tempo_text = match.group(0)
+                # Extract the actual text from quotes
+                for m in re.finditer(r'"(\^|_)([^"]+)"', tempo_text):
+                    mark_text = m.group(2).strip()
+                    if mark_text:
+                        tempo_marks.append(mark_text)
+                # Remove tempo marks from first measure content
+                first_measure.content = content[match.end():].lstrip()
+
+    max_m = max((len(ms) for ms in voice_measures.values()), default=0)
+    if max_m == 0:
+        raise AbcError("No measures found in any voice.")
+
+    # Group output measures into rows with a character limit for readability.
     out_body: list = []
+    chars_per_row = 100  # target max line length
+    current_line = ""
 
-    for row_idx in range(max_rows):
-        # Gather per-voice measures for this row.
-        row_measures: list = []  # row_measures[v_idx] = list[Measure]
-        for v in voice_order:
-            rows = voice_rows.get(v, [])
-            row_measures.append(rows[row_idx] if row_idx < len(rows) else [])
-
-        # Max measure count across voices in this row (should match primary).
-        max_m = max((len(mv) for mv in row_measures), default=0)
-        if max_m == 0:
-            continue
-
-        # Opening bar prefix from primary voice's first measure (e.g. "|:").
-        opening = ""
-        if row_measures and row_measures[0]:
-            opening = row_measures[0][0].prefix
-
-        out = opening
-        for m_idx in range(max_m):
-            voice_strs = []
-            for v_idx in range(len(voice_order)):
-                mv = row_measures[v_idx]
-                if m_idx < len(mv):
-                    voice_strs.append(mv[m_idx].content.strip())
-                else:
-                    voice_strs.append("z")
-            if len(voice_order) > 1:
-                group = " ; ".join(voice_strs)
+    for m_idx in range(max_m):
+        voice_strs: list = []
+        bar_sfx = "|"
+        for v_idx, v in enumerate(voice_order):
+            mv = voice_measures.get(v, [])
+            if m_idx < len(mv):
+                voice_strs.append(mv[m_idx].content.strip())
+                if v_idx == 0:
+                    bar_sfx = mv[m_idx].suffix or "|"
             else:
-                group = voice_strs[0]
-            # Closing bar from primary voice's measure suffix.
-            if m_idx < len(row_measures[0]):
-                sfx = row_measures[0][m_idx].suffix or "|"
-            else:
-                sfx = "|"
-            if out and not out.endswith(" "):
-                out += " "
-            out += group + " " + sfx
-        out_body.append(out.strip())
+                voice_strs.append("z")
+
+        group = " ; ".join(voice_strs)
+        # Use the first voice's measure prefix for opening bar (e.g. "|:").
+        first_mv = voice_measures.get(voice_order[0], [])
+        opening = first_mv[m_idx].prefix if m_idx < len(first_mv) else ""
+
+        # FIX 3: Add space between bar line and inline field to avoid parse ambiguity
+        # When opening ends with bar characters (|, :) and group starts with [,
+        # ensure there's a space between them to prevent ABCJS from misinterpreting
+        # patterns like "|[K:B]" or "| |[K:B]" as first-ending brackets "|[1"
+        if opening and group.startswith('['):
+            # If opening doesn't already end with whitespace, add a space
+            if not opening[-1].isspace():
+                opening = opening + ' '
+
+        segment = f"{opening}{group} {bar_sfx}" if opening else f"{group} {bar_sfx}"
+
+        if current_line and len(current_line) + len(segment) + 3 > chars_per_row:
+            out_body.append(current_line.rstrip())
+            current_line = segment + " "
+        else:
+            current_line += segment + " "
+
+    if current_line.strip():
+        out_body.append(current_line.rstrip())
 
     preserved_middle = []
     for line in middle_lines:
         if L_RE.match(line.strip()):
             continue
         preserved_middle.append(line)
+
+    # Add extracted tempo marks to middle section as %%text directives
+    if tempo_marks:
+        for mark in tempo_marks:
+            preserved_middle.append(f"%%text {mark}")
+
     middle_str = ("\n".join(preserved_middle) + "\n") if preserved_middle else ""
     return "\n".join(out_header) + "\n" + middle_str + "\n".join(out_body) + "\n"
 
@@ -555,32 +746,21 @@ def abc_to_abcx(source: str) -> str:
 # Facade
 # ---------------------------------------------------------------------------
 
-def has_abcx_body(source: str) -> bool:
-    """Strict: body actually contains a top-level `;` separator."""
-    in_body = False
-    for line in (source or "").replace("\r\n", "\n").split("\n"):
-        s = line.strip()
-        if not in_body:
-            if s.startswith("K:"):
-                in_body = True
-            continue
-        if not s or s.startswith("%") or FIELD_RE.match(s):
-            continue
-        if len(split_top_level(strip_comment(s), ";")) > 1:
-            return True
-    return False
-
-
 def to_standard_abcx(source: str, *, validate: bool = True) -> str:
-    """Convert any ABC input to standard ABCX while preserving synchronized M:/L: changes."""
+    """Convert ABC input to standard ABCX format.
+
+    Always applies formatting fixes:
+    1. Grand staff format for 2-staff piano scores
+    2. Tempo marks moved to header
+    3. Space between bar lines and inline fields
+    """
     if not (source or "").strip():
         raise AbcError("Empty input.")
     normalized = (source or "").replace("\r\n", "\n")
     if not re.search(r"^K:", normalized, re.MULTILINE):
         raise AbcError("Missing K: line -- input is not a valid ABC file.")
-    if has_abcx_body(source):
-        return normalize_abc(source)
-    return abc_to_abcx(normalize_abc(source))
+    # Always convert through abc_to_abcx to apply all fixes
+    return abc_to_abcx(normalized)
 
 
 # ---------------------------------------------------------------------------

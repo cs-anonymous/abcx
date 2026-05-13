@@ -424,6 +424,18 @@
 		let contentStart = 0
 		let index = 0
 		while (index < line.length) {
+			// Treat standalone `::` (not part of a barline like `:|:` or `|:`)
+			// as a measure separator for volta first/second endings.
+			if (line[index] === ":" && line[index + 1] === ":"
+				&& !content.trimEnd().endsWith("|")
+				&& !content.trimEnd().endsWith(":")) {
+				result.push({ prefix, content, suffix: "::", column: contentStart })
+				prefix = ""
+				content = ""
+				contentStart = index + 2
+				index += 2
+				continue
+			}
 			if (line[index] === "|") {
 				const barStart = index
 				let bar = line[index++]
@@ -1092,6 +1104,7 @@
 			const next = text[i + 1] || ""
 			if (ch === "|") return true
 			if (ch === ":" && next === "|") return true
+			if (ch === ":" && next === ":") return true
 			if (ch === "[" && next === "|") return true
 			return false
 		}
