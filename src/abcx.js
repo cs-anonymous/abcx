@@ -13,8 +13,19 @@
 		return /^\s*%%score\s+/m.test(source) || /(^|\n)[^\n%]*;/.test(source) || /(^|\s)@\[/.test(source)
 	}
 
+	const isAlignedAbcx = (source) => {
+		// Check for H1, H2, ... and M1, M2, ... patterns with tab-separated content
+		return /^\s*H\d+\s*$/m.test(source) && /^\s*M\d+\t/m.test(source)
+	}
+
 	const analyze = (source, options = {}) => {
 		const normalized = (source || "").replace(/\r\n/g, "\n")
+
+		// Check if this is an aligned ABCX format
+		if (isAlignedAbcx(normalized)) {
+			return analyzeAlignedAbcx(normalized, options)
+		}
+
 		const state = parsePrelude(normalized)
 		const diagnostics = []
 
@@ -1148,9 +1159,197 @@
 		return result
 	}
 
+	const analyzeAlignedAbcx = (source, options = {}) => {
+		const lines = source.split("\n")
+		const diagnostics = []
+		const header = []
+		const phrases = []
+		let currentPhrase = null
+		let fields = {}
+
+		// Parse header and body
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i].trim()
+
+			// Header field
+			if (fieldRe.test(line)) {
+				header.push(line)
+				const match = line.match(/^([A-Za-z]):(.*)/)
+				if (match) {
+					fields[match[1]] = match[2].trim()
+				}
+				continue
+			}
+
+			// Phrase marker (H1, H2, etc.)
+			const phraseMatch = line.match(/^H(\d+)$/)
+			if (phraseMatch) {
+				if (currentPhrase) {
+					phrases.push(currentPhrase)
+				}
+				currentPhrase = {
+					id: line,
+					measures: []
+				}
+				continue
+			}
+
+			// Measure line (M1\t..., M2\t..., etc.)
+			const measureMatch = line.match(/^M(\d+)\t(.+)$/)
+			if (measureMatch && currentPhrase) {
+				const measureNum = parseInt(measureMatch[1])
+				const content = measureMatch[2]
+
+				// Validate measure content has voice separator
+				if (!content.includes(';')) {
+					addDiagnostic(diagnostics, "warning", i, 0,
+						`Measure M${measureNum} missing voice separator ';'`)
+				}
+
+				currentPhrase.measures.push({
+					num: measureNum,
+					content: content,
+					line: i
+				})
+				continue
+			}
+
+			// Empty lines or comments are OK
+			if (line === "" || line.startsWith("%")) {
+				continue
+			}
+
+			// Unexpected content
+			if (line && !line.startsWith("%%")) {
+				addDiagnostic(diagnostics, "warning", i, 0,
+					`Unexpected line in aligned ABCX: ${line}`)
+			}
+		}
+
+		// Add last phrase
+		if (currentPhrase) {
+			phrases.push(currentPhrase)
+		}
+
+		// Validate structure
+		if (phrases.length === 0) {
+			addDiagnostic(diagnostics, "error", 0, 0,
+				"No phrases found in aligned ABCX")
+		}
+
+		// Convert to standard ABC for rendering
+		const abc = convertAlignedToAbc(header, phrases, fields)
+
+		// Validate with abcjs if available
+		if (options.abcjs) {
+			try {
+				const parsed = options.abcjs.parseOnly(abc)
+				for (const tune of parsed || []) {
+					for (const warning of tune.warnings || []) {
+						addDiagnostic(diagnostics, "warning", 0, 0, cleanAbcjsWarning(warning))
+					}
+				}
+			} catch (err) {
+				addDiagnostic(diagnostics, "error", 0, 0,
+					err && err.message ? err.message : String(err))
+			}
+		}
+
+		return {
+			abc,
+			diagnostics,
+			isAbcx: true,
+			isAligned: true,
+			phrases,
+			fields
+		}
+	}
+
+	const convertAlignedToAbc = (header, phrases, fields) => {
+		const lines = []
+
+		// Add header fields up to K:
+		const headerWithoutK = []
+		let kLine = null
+		for (const h of header) {
+			if (h.trim().startsWith("K:")) {
+				kLine = h
+			} else {
+				headerWithoutK.push(h)
+			}
+		}
+		lines.push(...headerWithoutK)
+
+		// Add K: line
+		if (kLine) {
+			lines.push(kLine)
+		}
+
+		// Ensure we have %%score directive for multi-voice
+		if (!header.some(h => h.startsWith("%%score"))) {
+			lines.push("%%score { 1 | 2 }")
+		}
+
+		// Add voice definitions with clefs
+		lines.push("V:1 clef=treble")
+		lines.push("V:2 clef=bass")
+
+		// Collect all voice 1 and voice 2 content across all phrases
+		const voice1Lines = []
+		const voice2Lines = []
+
+		// Convert phrases to ABC body
+		for (const phrase of phrases) {
+			// Get first measure number
+			const firstMeasureNum = phrase.measures.length > 0 ? phrase.measures[0].num : ""
+
+			// Collect all measures for voice 1 and voice 2
+			const voice1Measures = []
+			const voice2Measures = []
+
+			for (const measure of phrase.measures) {
+				// Split voices by semicolon
+				const voices = measure.content.split(';').map(v => v.trim())
+				if (voices.length >= 2) {
+					voice1Measures.push(voices[0])
+					voice2Measures.push(voices[1])
+				} else {
+					// Fallback for single voice
+					voice1Measures.push(voices[0] || "")
+					voice2Measures.push("")
+				}
+			}
+
+			// Join measures with bar lines and add closing bar for each voice
+			if (voice1Measures.length > 0) {
+				const voice1Line = voice1Measures.join(' | ')
+				// Add closing bar if not already present (check for actual bar lines, not chord brackets)
+				voice1Lines.push(voice1Line + (voice1Line.trim().match(/\|[\]:|]*$|:[\]:|]*$/) ? '' : ' |'))
+			}
+			if (voice2Measures.length > 0) {
+				const voice2Line = voice2Measures.join(' | ')
+				// Add closing bar if not already present (check for actual bar lines, not chord brackets)
+				voice2Lines.push(voice2Line + (voice2Line.trim().match(/\|[\]:|]*$|:[\]:|]*$/) ? '' : ' |'))
+			}
+		}
+
+		// Output all voice 1 content, then all voice 2 content
+		if (voice1Lines.length > 0) {
+			lines.push("V:1")
+			lines.push(...voice1Lines)
+		}
+		if (voice2Lines.length > 0) {
+			lines.push("V:2")
+			lines.push(...voice2Lines)
+		}
+
+		return lines.join("\n")
+	}
+
 	return {
 		analyze,
 		isAbcx,
+		isAlignedAbcx,
 		hasAbcxBody,
 		convert: (source) => analyze(source).abc,
 		abcxToAbc,

@@ -291,6 +291,11 @@ const getEditorContent = (document) => {
 
 const getAnalyzedContent = (document) => {
 	const content = getEditorContent(document)
+	// Check aligned format FIRST (before hasAbcxBody, since aligned also has semicolons)
+	if (abcx.isAlignedAbcx && abcx.isAlignedAbcx(content)) {
+		const result = abcx.analyze(content, { abcjs, layout: { mode: layoutMode, barsPerLine: layoutBars } })
+		return result
+	}
 	if (abcx.hasAbcxBody(content)) {
 		const result = abcx.analyze(content, { abcjs, layout: { mode: layoutMode, barsPerLine: layoutBars } })
 		result.abc = abcx.normalizeAbc(result.abc)

@@ -245,6 +245,15 @@ def _is_bar_start(text: str, i: int, quote: bool, bracket: int) -> bool:
         return True
     if ch == ":" and nxt == ":":
         return True
+    # Handle `: ` (repeat-end colon followed by space) — happens after
+    # _strip_dollar removes `$` from patterns like `:|2$ A,2E2`.
+    if ch == ":" and nxt == " ":
+        # Look past whitespace for a bar character or digit
+        j = i + 1
+        while j < len(text) and text[j] == " ":
+            j += 1
+        if j < len(text) and text[j] in ("|", ":", "[") or (j < len(text) and text[j].isdigit()):
+            return True
     return False
 
 
@@ -259,18 +268,51 @@ def _consume_bar(text: str, i: int) -> tuple:
     while i < len(text) and text[i] in ("|", ":"):
         delim += text[i]
         i += 1
+    # Consume complete volta number(s) after bar line
+    # e.g., `2`, `1,3`, `1,2,3`, `"1,2"` (quoted text endings)
     if i < len(text) and text[i].isdigit():
-        delim += text[i]
-        i += 1
-    # Also consume trailing bar chars after whitespace (e.g. `| ]`).
-    # Only consume `]` or `:`, NOT `[` which starts chord brackets.
-    while i < len(text) and text[i] == " ":
-        i += 1
-        if i < len(text) and text[i] in ("]", ":"):
+        start = i
+        while i < len(text) and (text[i].isdigit() or text[i] == ','):
             delim += text[i]
             i += 1
-        else:
-            break
+        # If followed by a space and more digits (volta text), consume that too
+        if i < len(text) and text[i] == ' ' and i + 1 < len(text) and text[i + 1].isdigit():
+            pass  # stop before the space, leave it as separator
+    # Also consume trailing bar chars like `]` after volta numbers (e.g. `:|2]`)
+    while i < len(text) and text[i] in ("|", ":", "]"):
+        delim += text[i]
+        i += 1
+    # Handle whitespace between bar characters, e.g. `: | 2` after _strip_dollar.
+    # Bar line characters in ABC must be contiguous (`:|`, `|:`, `||`, `|]`);
+    # whitespace between them is consumed and NOT included in the delimiter.
+    # Only consume `|` and `:`, NOT `[` (which starts chords/inline fields).
+    # Also consume volta numbers that appear after whitespace.
+    if i < len(text) and text[i] == " ":
+        j = i
+        while j < len(text) and text[j] == " ":
+            j += 1
+        if j < len(text) and (text[j] in ("|", ":", "]") or text[j].isdigit()):
+            # Consume bar chars found after whitespace — NO space in delimiter.
+            if text[j] in ("|", ":", "]"):
+                delim += text[j]
+                j += 1
+                while j < len(text) and text[j] in ("|", ":"):
+                    delim += text[j]
+                    j += 1
+                # After bar chars, skip more whitespace and check for volta number
+                while j < len(text) and text[j] == " ":
+                    j += 1
+            # Consume volta number (may have appeared directly after whitespace,
+            # or after whitespace+bar chars)
+            if j < len(text) and text[j].isdigit():
+                while j < len(text) and (text[j].isdigit() or text[j] == ','):
+                    delim += text[j]
+                    j += 1
+            # Also consume trailing bar chars like `]` after volta numbers
+            while j < len(text) and text[j] in ("|", ":", "]"):
+                delim += text[j]
+                j += 1
+            i = j
     return delim, i
 
 
@@ -538,6 +580,10 @@ def abc_to_abcx(source: str) -> str:
         s = line.strip()
         if not s or s.startswith("%"):
             continue
+        # Skip lyric lines — xml2abc emits these for fingering annotations,
+        # and they must not be parsed as music measures.
+        if s.startswith(("w:", "W:", "s:")):
+            continue
         m = V_FIELD_RE.match(s)
         if m:
             current_voice = ensure_voice(m.group(1))
@@ -706,6 +752,11 @@ def abc_to_abcx(source: str) -> str:
         # Use the first voice's measure prefix for opening bar (e.g. "|:").
         first_mv = voice_measures.get(voice_order[0], [])
         opening = first_mv[m_idx].prefix if m_idx < len(first_mv) else ""
+
+        # FIX: If group starts with a bare volta number and no opening, add a barline
+        # Match patterns like `2 A2e2`, `2A,2E2`, `1,3 A2e2`, `2S C2`, `1[`, `2[`, `1!pp!`, etc.
+        if not opening and re.match(r'^\d+(?:,\d+)*[\s\[\!A-Ga-gSZ]', group):
+            opening = '|'
 
         # FIX 3: Add space between bar line and inline field to avoid parse ambiguity
         # When opening ends with bar characters (|, :) and group starts with [,

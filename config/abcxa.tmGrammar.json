@@ -1,5 +1,5 @@
 {
-	"scopeName": "source.abc",
+	"scopeName": "source.abcxa",
 	"patterns": [
 		{ "include": "#aligned-markers" },
 		{ "include": "#header" },

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.3 - 2024/05/14
+- Add aligned ABCX format support
+  - Auto-detect aligned format with H/M markers
+  - Syntax highlighting: H markers (cyan/bold), M markers (yellow/bold)
+  - Convert aligned format to standard ABC for preview
+  - Fix preview rendering to show all phrases (not just first one)
+  - Each phrase renders on a single line with proper bar lines
+- Export functions: MIDI, SVG, standard ABC/ABCX
+- Add test suite for aligned format
+- Update documentation
+
 ## 0.2.4 - 2023/03/06
 - Fix New File icon
 - Update README

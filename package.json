@@ -2,7 +2,7 @@
 	"name": "abcx-tools",
 	"displayName": "ABCX Tools",
 	"description": "Preview, play and edit ABC/ABCX music notation with multi-voice support",
-	"version": "0.3.0",
+	"version": "0.3.3",
 	"license": "SEE LICENSE IN LICENSE.md",
 	"publisher": "YeSun",
 	"author": {
@@ -63,6 +63,40 @@
 				}
 			}
 		],
+		"configurationDefaults": {
+			"[abcx]": {
+				"editor.tokenColorCustomizations": {
+					"textMateRules": [
+						{
+							"scope": "keyword.control.phrase.abc",
+							"settings": {
+								"foreground": "#4EC9B0",
+								"fontStyle": "bold"
+							}
+						},
+						{
+							"scope": "constant.numeric.phrase.abc",
+							"settings": {
+								"foreground": "#4EC9B0"
+							}
+						},
+						{
+							"scope": "keyword.control.measure.abc",
+							"settings": {
+								"foreground": "#DCDCAA",
+								"fontStyle": "bold"
+							}
+						},
+						{
+							"scope": "constant.numeric.measure.abc",
+							"settings": {
+								"foreground": "#DCDCAA"
+							}
+						}
+					]
+				}
+			}
+		},
 		"grammars": [
 			{
 				"language": "abc",
@@ -72,7 +106,7 @@
 			{
 				"language": "abcx",
 				"scopeName": "source.abcx",
-				"path": "config/abc.tmGrammar.json"
+				"path": "config/abcx.tmGrammar.json"
 			}
 		],
 		"commands": [
