@@ -31,23 +31,27 @@ The ABCX linter checks:
 
 ### Aligned ABCX Format
 
-The plugin now supports **aligned ABCX format**, a phrase-aligned notation format for piano scores. This format uses:
+The plugin supports **aligned ABCX format**, a phrase-aligned notation format projected to two output staves. This format uses:
 
 - **H markers** (H1, H2, ...) to denote phrases
 - **M markers** (M1, M2, ...) to denote measures
-- **Tab-separated** left and right hand parts with `;` separator
+- **Tab-separated** staff content with exactly one `;` separator: `StaffU ; StaffL`
+- `&` to join multiple voices within the same staff
+- `.` as an empty-staff placeholder; preview/export converts it to a full-measure rest
 
 Example:
 ```abcx
 X:1
 T:Example
+L:1/16
+M:2/4
 K:C
 H1
-M1	C D E F ; C, D, E, F,
-M2	G A B c ; G, A, B, C
+M1	C2D2 & E2F2 ; C,2D,2
+M2	. ; G,,8
 ```
 
-For complete documentation, see [ALIGNED_FORMAT_GUIDE.md](ALIGNED_FORMAT_GUIDE.md).
+For complete documentation, see [ALIGNED_FORMAT.md](ALIGNED_FORMAT.md).
 
 Snippets are available to aid with the creation of new files. Type `ABC` and select one of the snippets. For example, this is the `ABC: Headers (Minimal)`:
 

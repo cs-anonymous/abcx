@@ -1181,6 +1181,13 @@
 				continue
 			}
 
+			// ABC directives such as %%text are valid in aligned headers. The
+			// aligned data no longer needs %%score, so synthesize it later.
+			if (line.startsWith("%%")) {
+				if (!line.startsWith("%%score")) header.push(line)
+				continue
+			}
+
 			// Phrase marker (H1, H2, etc.)
 			const phraseMatch = line.match(/^H(\d+)$/)
 			if (phraseMatch) {
@@ -1201,9 +1208,10 @@
 				const content = measureMatch[2]
 
 				// Validate measure content has voice separator
-				if (!content.includes(';')) {
+				const voices = splitTopLevel(content, ";")
+				if (voices.length !== 2) {
 					addDiagnostic(diagnostics, "warning", i, 0,
-						`Measure M${measureNum} missing voice separator ';'`)
+						`Measure M${measureNum} should contain exactly one top-level voice separator ';'`)
 				}
 
 				currentPhrase.measures.push({
@@ -1294,6 +1302,8 @@
 		lines.push("V:1 clef=treble")
 		lines.push("V:2 clef=bass")
 
+		const emptyStaffRest = alignedEmptyStaffRest(fields)
+
 		// Collect all voice 1 and voice 2 content across all phrases
 		const voice1Lines = []
 		const voice2Lines = []
@@ -1308,15 +1318,15 @@
 			const voice2Measures = []
 
 			for (const measure of phrase.measures) {
-				// Split voices by semicolon
-				const voices = measure.content.split(';').map(v => v.trim())
+				// Split output staves by the single top-level semicolon.
+				const voices = splitTopLevel(measure.content, ";").map(v => v.trim())
 				if (voices.length >= 2) {
-					voice1Measures.push(voices[0])
-					voice2Measures.push(voices[1])
+					voice1Measures.push(normalizeAlignedStaffContent(voices[0], emptyStaffRest))
+					voice2Measures.push(normalizeAlignedStaffContent(voices.slice(1).join(" ; "), emptyStaffRest))
 				} else {
 					// Fallback for single voice
-					voice1Measures.push(voices[0] || "")
-					voice2Measures.push("")
+					voice1Measures.push(normalizeAlignedStaffContent(voices[0] || "", emptyStaffRest))
+					voice2Measures.push(emptyStaffRest)
 				}
 			}
 
@@ -1344,6 +1354,30 @@
 		}
 
 		return lines.join("\n")
+	}
+
+	const normalizeAlignedStaffContent = (content, emptyStaffRest) => {
+		const trimmed = String(content || "").trim()
+		if (!trimmed || trimmed === ".") return emptyStaffRest
+		return trimmed
+	}
+
+	const alignedEmptyStaffRest = (fields) => {
+		const meter = parseMeter(fields.M || "4/4")
+		const defaultLength = parseFraction(fields.L || "1/8")
+		const units = meter / defaultLength
+		return `z${formatDurationMultiplier(units)}`
+	}
+
+	const formatDurationMultiplier = (value) => {
+		const denominators = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 64, 96, 128]
+		for (const denominator of denominators) {
+			const numerator = Math.round(value * denominator)
+			if (Math.abs(value - numerator / denominator) < EPSILON) {
+				return formatMultiplier(numerator, denominator)
+			}
+		}
+		return String(Number(value.toFixed(6)))
 	}
 
 	return {

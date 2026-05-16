@@ -3,16 +3,19 @@
  * Test script for aligned ABCX format support
  */
 
-const abcjs = require('./abcx/src/lib/abcjs.js');
-const abcx = require('./abcx/src/abcx.js');
 const fs = require('fs');
 const path = require('path');
+const assert = require('assert');
+const projectRoot = path.resolve(__dirname, '..', '..');
+const extensionRoot = path.resolve(__dirname, '..');
+const abcjs = require(path.join(extensionRoot, 'src/lib/abcjs.js'));
+const abcx = require(path.join(extensionRoot, 'src/abcx.js'));
 
 console.log('=== ABCX Aligned Format Test Suite ===\n');
 
 // Test 1: Format Detection
 console.log('Test 1: Format Detection');
-const testFile = './PianoCoRe/aligned/Abreu,_Zequinha/Tico-Tico_no_fubá/score_aligned.abcx';
+const testFile = path.join(projectRoot, 'PianoCoRe/aligned/Abreu,_Zequinha/Tico-Tico_no_fubá/score_aligned.abcx');
 const content = fs.readFileSync(testFile, 'utf8');
 console.log('  ✓ File loaded:', path.basename(testFile));
 console.log('  ✓ Is aligned format:', abcx.isAlignedAbcx(content));
@@ -70,5 +73,27 @@ const h1Lines = abcLines.slice(h1Start, h2Start);
 h1Lines.forEach(line => {
   if (line.trim()) console.log('  ', line);
 });
+
+// Test 7: Empty-staff placeholder
+console.log('\nTest 7: Empty Staff Placeholder');
+const emptyStaffContent = `X:1
+T:Empty Staff Placeholder
+L:1/16
+M:2/4
+K:C
+%%text Placeholder smoke test
+H1
+M1\t. ; C,2D,2E,2F,2
+M2\tc2d2e2f2 ; .
+`;
+const emptyResult = abcx.analyze(emptyStaffContent, { abcjs });
+console.log('  ✓ Diagnostics:', emptyResult.diagnostics.length);
+console.log('  ✓ Upper placeholder became z8:', /V:1[\s\S]*z8 \|/.test(emptyResult.abc));
+console.log('  ✓ Lower placeholder became z8:', /V:2[\s\S]*z8 \|/.test(emptyResult.abc));
+console.log('  ✓ Preserves %%text:', emptyResult.abc.includes('%%text Placeholder smoke test'));
+assert.strictEqual(emptyResult.diagnostics.length, 0);
+assert.ok(/V:1[\s\S]*z8 \|/.test(emptyResult.abc));
+assert.ok(/V:2[\s\S]*z8 \|/.test(emptyResult.abc));
+assert.ok(emptyResult.abc.includes('%%text Placeholder smoke test'));
 
 console.log('\n=== All Tests Passed! ===');

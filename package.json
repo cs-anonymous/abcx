@@ -2,7 +2,7 @@
 	"name": "abcx-tools",
 	"displayName": "ABCX Tools",
 	"description": "Preview, play and edit ABC/ABCX music notation with multi-voice support",
-	"version": "0.3.3",
+	"version": "0.3.4",
 	"license": "SEE LICENSE IN LICENSE.md",
 	"publisher": "YeSun",
 	"author": {

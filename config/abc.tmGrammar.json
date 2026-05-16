@@ -6,6 +6,7 @@
 		{ "include": "#directive" },
 		{ "include": "#comment" },
 		{ "include": "#strings" },
+		{ "include": "#aligned-placeholder" },
 		{ "include": "#information" },
 		{ "include": "#number" },
 		{ "include": "#blocks" },
@@ -27,6 +28,17 @@
 						"1": { "name": "keyword.control.measure.abc" },
 						"2": { "name": "constant.numeric.measure.abc" },
 						"3": { "name": "punctuation.separator.tab.abc" }
+					}
+				}
+			]
+		},
+		"aligned-placeholder": {
+			"patterns": [
+				{
+					"match": "([\\t;])\\s*(\\.)(?=\\s*(;|$))",
+					"captures": {
+						"1": { "name": "punctuation.separator.staff.abc" },
+						"2": { "name": "constant.language.empty-staff.abc" }
 					}
 				}
 			]

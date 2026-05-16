@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4 - 2026/05/16
+- Update aligned ABCX support for the two-staff projection format
+  - Treat `.` as an empty-staff placeholder and convert it to a full-measure rest
+  - Preserve aligned header directives such as `%%text`
+  - Split aligned staves with top-level `;` parsing
+  - Add syntax highlighting for aligned empty-staff placeholders
+
 ## 0.3.3 - 2024/05/14
 - Add aligned ABCX format support
   - Auto-detect aligned format with H/M markers
