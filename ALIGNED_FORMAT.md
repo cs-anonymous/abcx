@@ -2,150 +2,122 @@
 
 ## Overview
 
-Aligned ABCX is a phrase-aligned music notation format for piano scores, designed to represent the alignment between left and right hand parts at the phrase and measure level.
+Aligned ABCX is a compact phrase/measure format derived from raw ABCX for SFT
+data. Every aligned measure is represented as two output staves: upper staff
+(`StaffU`) and lower staff (`StaffL`).
 
-## Format Structure
+Raw scores do not have to be literally written as exactly two staves. During
+conversion, `%%score` is projected to two target staves whenever that projection
+is unambiguous. This keeps ordinary piano scores, two-voice shorthand scores,
+and vocal+piano scores where the piano part is a braced two-staff group.
 
-### File Extension
-Use `.abcx` extension (same as standard ABCX).
-
-### Basic Structure
+## Structure
 
 ```abcx
 X:1
 T:Title
 C:Composer
-%%score { 1 | 2 }
 L:1/16
 Q:1/4=100
 M:2/4
 K:C
 H1
-M1	right_hand_notes ; left_hand_notes
-M2	right_hand_notes ; left_hand_notes
+M1	StaffU ; StaffL
+M2	StaffU ; StaffL
 H2
-M3	right_hand_notes ; left_hand_notes
-M4	right_hand_notes ; left_hand_notes
+M3	StaffU ; StaffL
+M4	StaffU ; StaffL
 ```
 
-### Key Elements
+Required elements:
 
-- **H markers** (phrases): `H1`, `H2`, `H3`, ... on separate lines
-- **M markers** (measures): `M1`, `M2`, `M3`, ... followed by TAB character
-- **Voice separator**: Use semicolon `;` to separate right and left hand
-- **TAB character**: Required between M marker and note content (not spaces)
+- `H1`, `H2`, ... mark phrases and appear on their own lines.
+- `M1`, `M2`, ... mark measures and are followed by one TAB.
+- Every `M` line contains exactly one semicolon: `StaffU ; StaffL`.
+- `%%score` is removed because the staff split is encoded by the semicolon.
+- Raw `V:` voice definitions are removed because aligned voice order is local to
+  each measure.
 
-## Features
+## Score Projection Rules
 
-### Syntax Highlighting
-- **H markers**: Cyan/teal (#4EC9B0), bold
-- **M markers**: Yellow (#DCDCAA), bold
-- Numbers follow their marker's color
-
-### Preview
-- Automatically converts to standard ABC format
-- Each phrase renders on a single line
-- Measures separated by bar lines
-- Supports multi-phrase rendering
-
-### Export
-- MIDI export
-- SVG export
-- Standard ABC export
-- Standard ABCX export
-
-## Quick Start
-
-1. **Create a file** with `.abcx` extension
-2. **Write content** using H/M markers with TAB separation
-3. **Open in VS Code** - syntax highlighting activates automatically
-4. **Click preview button** to render the score
-5. **Export** using buttons in preview panel
-
-## Example
+Preferred raw layouts map directly:
 
 ```abcx
-X:1
-T:Simple Example
-C:Anonymous
 %%score { 1 | 2 }
-L:1/4
-M:4/4
-K:C
-H1
-M1	C D E F ; C, D, E, F,
-M2	G A B c ; G, A, B, C
-H2
-M3	c B A G ; C B, A, G,
-M4	F E D C ; F, E, D, C,
+%%score { (1 2 5) | (3 4 6) }
+%%score 1 | 2
 ```
 
-## Installation
+Relaxed layouts are projected:
 
-```bash
-# Package the extension
-cd abcx
-npx vsce package
+```abcx
+%%score 1 2
+# => StaffU = voice 1, StaffL = voice 2
 
-# Install in VS Code
-code --install-extension abcx-tools-0.3.3.vsix --force
+%%score 1 { (2 4) | (3 5) }
+# => keep the braced piano group; drop the extra vocal/solo voice 1
 
-# Reload VS Code
-# Press Ctrl+Shift+P → "Developer: Reload Window"
+%%score 1 | 2 | 3 | 4
+# => fold top-level staves into two halves
 ```
 
-## Testing
+Within each measure:
 
-Run the test suite:
-```bash
-cd abcx
-node test/test_aligned_format.js
+1. Split the raw measure by voice slots using `;`.
+2. Map slots by the raw `%%score` voice order.
+3. Join remaining voices within the same staff using ` & `.
+4. Join the two staves using ` ; `.
+
+Example:
+
+```abcx
+%%score { (1 2 5) | (3 4 6) }
+raw:     A2B2 ; z4 ; z4 ; C,2D,2 ; E,4 ; z4
+aligned: A2B2 ; C,2D,2 & E,4
 ```
 
-## Troubleshooting
+## Rest Trimming
 
-### Syntax highlighting not working
-1. Ensure file extension is `.abcx`
-2. Reload VS Code window
-3. Check format: H markers on separate lines, M markers with TAB
+For each staff, inspect voices from back to front. If a trailing voice is all
+rests, remove that voice and its preceding `&`.
 
-### Preview shows only first phrase
-This issue is fixed in v0.3.3. Update to the latest version.
+If all voices in a staff are removed, use `.` as the staff placeholder.
 
-### Preview shows errors
-1. Check diagnostics at top of preview panel
-2. Ensure each measure has `;` separator
-3. Verify TAB characters (not spaces) after M markers
-4. Check that all measures have closing bar lines
+```abcx
+M7	c2d2 & e2f2 ; C,4
+M8	. ; G,,4
+M9	a4 ; .
+```
 
-## Technical Details
+Rest-only voices include empty slots, `.`, and voices containing only rests such
+as `z12`, even when they include inline fields like `[K:bass]` or annotations.
 
-### Conversion Process
+## Conversion Pipeline
 
-Aligned ABCX is converted to standard ABC for rendering:
+Both raw orphan ABCX conversion and score-MIDI aligned generation use the same
+normalization rule:
 
-1. Collect all V:1 (right hand) content from all phrases
-2. Collect all V:2 (left hand) content from all phrases
-3. Output as standard ABC:
-   ```abc
-   V:1
-   [all right hand content, one phrase per line]
-   V:2
-   [all left hand content, one phrase per line]
-   ```
+1. Read raw ABCX.
+2. Project `%%score` into two target staves.
+3. Parse measure content.
+4. Collapse voices to `StaffU ; StaffL`.
+5. Remove trailing all-rest voices per staff.
+6. Remove `%%score` and `V:` header lines.
+7. Write phrase (`H`) and measure (`M`) aligned ABCX.
 
-### Bar Line Handling
+Current entry points:
 
-- Measures automatically separated by `|`
-- Closing bar line added at end of each phrase
-- Regex ensures chord brackets `]` are not mistaken for bar lines
+- Orphan scores: `process_orphan_abcx.py`
+- Paired score/performance pipeline: `scripts/align_score_performance.py`
+- Score-only regeneration helper: `scripts/regenerate_score_files.py`
 
-## Documentation
+## Validation
 
-- [ABC Notation Specification](ABC%20乐谱格式规范.md)
-- [ABCX Extension Specification](ABCX%20扩展格式规范.md)
-- [Changelog](CHANGELOG.md)
+A valid aligned ABCX file must satisfy:
 
-## Contributing
-
-Issues and pull requests welcome at the project repository.
+- No `%%score` lines.
+- No raw `V:` voice-definition lines.
+- Every `M` line has a TAB after the measure id.
+- Every `M` line has exactly one semicolon.
+- The semicolon separates `StaffU` and `StaffL`.
+- Empty staves are represented by `.`.
