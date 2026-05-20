@@ -23,11 +23,28 @@
 					}
 				},
 				{
-					"match": "^(M)(\\d+)(\\t)",
+					"match": "^(<H><V)(\\d{3})(>)\\s*$",
+					"captures": {
+						"1": { "name": "keyword.control.phrase.abc" },
+						"2": { "name": "constant.numeric.phrase.abc" },
+						"3": { "name": "keyword.control.phrase.abc" }
+					}
+				},
+				{
+					"match": "^(M)(\\d+)(\\s+)",
 					"captures": {
 						"1": { "name": "keyword.control.measure.abc" },
 						"2": { "name": "constant.numeric.measure.abc" },
-						"3": { "name": "punctuation.separator.tab.abc" }
+						"3": { "name": "punctuation.separator.measure.abc" }
+					}
+				},
+				{
+					"match": "^(<M><V)(\\d{3})(>)(\\s+)",
+					"captures": {
+						"1": { "name": "keyword.control.measure.abc" },
+						"2": { "name": "constant.numeric.measure.abc" },
+						"3": { "name": "keyword.control.measure.abc" },
+						"4": { "name": "punctuation.separator.measure.abc" }
 					}
 				}
 			]
@@ -35,7 +52,7 @@
 		"aligned-placeholder": {
 			"patterns": [
 				{
-					"match": "([\\t;])\\s*(\\.)(?=\\s*(;|$))",
+					"match": "(^M\\d+\\s+|^<M><V\\d{3}>\\s+|[;])\\s*(\\.)(?=\\s*(;|$))",
 					"captures": {
 						"1": { "name": "punctuation.separator.staff.abc" },
 						"2": { "name": "constant.language.empty-staff.abc" }

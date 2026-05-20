@@ -15,7 +15,7 @@ Light+ Theme
 
 ## Usage
 
-Open the command palette and type `ABC` to search for the `ABC: Show Preview` command. It'll open a new panel with a preview of the ABC or ABCX file. Clicking on the `⏵` icon will play the file. The preview includes a draggable playback progress bar and highlights the current note while playing. `ABC: Export MIDI` will export a MIDI file in the current file directory. You can also click the buttons in the editor to call these commands.
+Open the command palette and type `ABC` to search for the `ABC: Show Preview` command. It'll open a new panel with a preview of the ABC, ABCX, or ABCI file. Clicking on the `⏵` icon will play the file. The preview includes a draggable playback progress bar and highlights the current note while playing. `ABC: Export MIDI` will export a MIDI file in the current file directory. `ABC: Convert to ABCX` will write a normalized `.abcx` file next to the current `.abc` or `.abci` source. You can also click the buttons in the editor to call these commands.
 
 ### Standard ABCX Format
 
@@ -33,9 +33,15 @@ The ABCX linter checks:
 
 The plugin supports **aligned ABCX format**, a phrase-aligned notation format projected to two output staves. This format uses:
 
-- **H markers** (H1, H2, ...) to denote phrases
-- **M markers** (M1, M2, ...) to denote measures
-- **Tab-separated** staff content with exactly one `;` separator: `StaffU ; StaffL`
+- **Phrase markers** in either legacy or token form:
+  - `H1`, `H2`, ...
+  - `<H><V000>`, `<H><V001>`, ...
+- **Measure markers** in either legacy or token form:
+  - `M1`, `M2`, ...
+  - `<M><V000>`, `<M><V001>`, ...
+- **Whitespace after the measure marker** followed by staff content with exactly one `;` separator:
+  - `M1 StaffU ; StaffL`
+  - `<M><V000>\tStaffU ; StaffL`
 - `&` to join multiple voices within the same staff
 - `.` as an empty-staff placeholder; preview/export converts it to a full-measure rest
 
@@ -46,12 +52,14 @@ T:Example
 L:1/16
 M:2/4
 K:C
-H1
-M1	C2D2 & E2F2 ; C,2D,2
-M2	. ; G,,8
+<H><V000>
+<M><V000>	C2D2 & E2F2 ; C,2D,2
+<M><V001>	. ; G,,8
 ```
 
 For complete documentation, see [ALIGNED_FORMAT.md](ALIGNED_FORMAT.md).
+
+The bundled `.abci` dataset files are treated as ABCX-like source files and can be converted with `ABC: Convert to ABCX`.
 
 Snippets are available to aid with the creation of new files. Type `ABC` and select one of the snippets. For example, this is the `ABC: Headers (Minimal)`:
 
@@ -71,8 +79,8 @@ See the [changelog](CHANGELOG.md) file.
 ```
 # 打包（在插件根目录运行）
 cd /home/sy/2026/Music/EPR/abcx
-npx vsce package --no-dependencies -o abcx-tools-0.3.0.vsix
+npx vsce package --no-dependencies -o abcx-tools-0.3.5.vsix
 
 # 安装到当前 VS Code（含远程 SSH 主机）
-code --install-extension /home/sy/2026/Music/EPR/abcx/abcx-tools-0.3.0.vsix --force
+code --install-extension /home/sy/2026/Music/EPR/abcx/abcx-tools-0.3.5.vsix --force
 ```

@@ -48,6 +48,14 @@ const registerCommands = () => {
 		"abcx.smartEnter", smartEnterHandler
 	)
 	ctx.subscriptions.push(smartEnter)
+
+	const convert = vscode.commands.registerCommand(
+		"abc.convertToAbcx", () => {
+			const output = convertToAbcx()
+			vscode.window.showInformationMessage(`ABCX converted to ${output}`)
+		}
+	)
+	ctx.subscriptions.push(convert)
 }
 
 const registerEvents = () => {
@@ -116,6 +124,18 @@ const exportStandardAbcx = (sourcePath = getSourceFilePath()) => {
 	const base = path.basename(sourcePath, path.extname(sourcePath))
 	const folder = path.dirname(sourcePath)
 	const output = path.resolve(folder, `${base}.std.abcx`)
+	writeFile(output, standard)
+	return output
+}
+
+const convertToAbcx = (sourcePath = getSourceFilePath()) => {
+	const document = vscode.window.activeTextEditor?.document
+	if (!document) throw new Error("No active editor is available for conversion.")
+	const source = document.getText().replace(/\r\n/g, "\n")
+	const standard = document.languageId === "abci" ? abcx.toAbciAbcx(source) : abcx.toStandardAbcx(source)
+	const base = path.basename(sourcePath, path.extname(sourcePath))
+	const folder = path.dirname(sourcePath)
+	const output = path.resolve(folder, `${base}.abcx`)
 	writeFile(output, standard)
 	return output
 }
@@ -296,7 +316,7 @@ const getAnalyzedContent = (document) => {
 		const result = abcx.analyze(content, { abcjs, layout: { mode: layoutMode, barsPerLine: layoutBars } })
 		return result
 	}
-	if (abcx.hasAbcxBody(content)) {
+	if (document?.languageId === "abci" || abcx.hasAbcxBody(content)) {
 		const result = abcx.analyze(content, { abcjs, layout: { mode: layoutMode, barsPerLine: layoutBars } })
 		result.abc = abcx.normalizeAbc(result.abc)
 		return result
@@ -384,7 +404,7 @@ const getOutputPath = (sourcePath, extension) => {
 
 const isAbc = (document) => {
 	const language = (document || vscode.window.activeTextEditor?.document)?.languageId
-	return language == "abc" || language == "abcx" || language == "plaintext"
+	return language == "abc" || language == "abcx" || language == "abci" || language == "plaintext"
 }
 
 const analyzeAbc = (content) => {

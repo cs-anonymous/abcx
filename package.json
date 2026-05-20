@@ -2,9 +2,9 @@
 	"name": "abcx-tools",
 	"displayName": "ABCX Tools",
 	"description": "Preview, play and edit ABC/ABCX music notation with multi-voice support",
-	"version": "0.3.4",
+	"version": "0.3.5",
 	"license": "SEE LICENSE IN LICENSE.md",
-	"publisher": "YeSun",
+	"publisher": "yesun",
 	"author": {
 		"name": "Ishihara Felipe"
 	},
@@ -31,7 +31,8 @@
 	},
 	"activationEvents": [
 		"onLanguage:abc",
-		"onLanguage:abcx"
+		"onLanguage:abcx",
+		"onLanguage:abci"
 	],
 	"main": "src/extension.js",
 	"contributes": {
@@ -61,10 +62,55 @@
 					"light": "icons/light/abc.svg",
 					"dark": "icons/dark/abc.svg"
 				}
+			},
+			{
+				"id": "abci",
+				"aliases": [
+					"ABCI"
+				],
+				"extensions": [
+					".abci"
+				],
+				"iconReferences": {
+					"light": "icons/light/abc.svg",
+					"dark": "icons/dark/abc.svg"
+				}
 			}
 		],
 		"configurationDefaults": {
 			"[abcx]": {
+				"editor.tokenColorCustomizations": {
+					"textMateRules": [
+						{
+							"scope": "keyword.control.phrase.abc",
+							"settings": {
+								"foreground": "#4EC9B0",
+								"fontStyle": "bold"
+							}
+						},
+						{
+							"scope": "constant.numeric.phrase.abc",
+							"settings": {
+								"foreground": "#4EC9B0"
+							}
+						},
+						{
+							"scope": "keyword.control.measure.abc",
+							"settings": {
+								"foreground": "#DCDCAA",
+								"fontStyle": "bold"
+							}
+						},
+						{
+							"scope": "constant.numeric.measure.abc",
+							"settings": {
+								"foreground": "#DCDCAA"
+							}
+						}
+					]
+				}
+			},
+			"[abci]": {
 				"editor.tokenColorCustomizations": {
 					"textMateRules": [
 						{
@@ -131,6 +177,12 @@
 				}
 			},
 			{
+				"title": "Convert to ABCX",
+				"command": "abc.convertToAbcx",
+				"category": "ABC",
+				"when": "editorLangId == abc || editorLangId == abci"
+			},
+			{
 				"title": "Smart Enter",
 				"command": "abcx.smartEnter",
 				"category": "ABCX",
@@ -145,18 +197,27 @@
 			{
 				"language": "abcx",
 				"path": "config/snippets.json"
+			},
+			{
+				"language": "abci",
+				"path": "config/snippets.json"
 			}
 		],
 		"menus": {
 			"editor/title": [
 				{
-					"when": "resourceLangId == abc || resourceLangId == abcx",
+					"when": "resourceLangId == abc || resourceLangId == abcx || resourceLangId == abci",
 					"command": "abc.exportMidi",
 					"group": "navigation"
 				},
 				{
-					"when": "resourceLangId == abc || resourceLangId == abcx",
+					"when": "resourceLangId == abc || resourceLangId == abcx || resourceLangId == abci",
 					"command": "abc.showPreview",
+					"group": "navigation"
+				},
+				{
+					"when": "resourceLangId == abc || resourceLangId == abci",
+					"command": "abc.convertToAbcx",
 					"group": "navigation"
 				}
 			]
@@ -165,7 +226,7 @@
 			{
 				"command": "abcx.smartEnter",
 				"key": "ctrl+enter",
-				"when": "editorTextFocus && editorLangId == abcx"
+				"when": "editorTextFocus && (editorLangId == abcx || editorLangId == abci)"
 			}
 		]
 	},

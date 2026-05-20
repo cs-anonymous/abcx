@@ -14,8 +14,21 @@
 	}
 
 	const isAlignedAbcx = (source) => {
-		// Check for H1, H2, ... and M1, M2, ... patterns with tab-separated content
-		return /^\s*H\d+\s*$/m.test(source) && /^\s*M\d+\t/m.test(source)
+		// Check for aligned phrase/measure markers in either legacy or
+		// token-style form.
+		// Legacy:
+		//   H1
+		//   M1 StaffU ; StaffL
+		// Token-style:
+		//   <H><V001>
+		//   <M><V000>\tStaffU ; StaffL
+		const hasPhrase =
+			/^\s*H\d+\s*$/m.test(source) ||
+			/^\s*<H><V\d{3}>\s*$/m.test(source)
+		const hasMeasure =
+			/^\s*M\d+\s+\S/m.test(source) ||
+			/^\s*<M><V\d{3}>\s+\S/m.test(source)
+		return hasPhrase && hasMeasure
 	}
 
 	const analyze = (source, options = {}) => {
@@ -948,6 +961,18 @@
 		return abcToAbcx(normalizeAbc(source))
 	}
 
+	const toAbciAbcx = (source) => {
+		let converted = abcToAbcx(normalizeAbc(source), { force: true })
+		if (!/^\s*%%score\s+/m.test(converted)) {
+			const analysis = analyze(converted)
+			const voices = analysis.voices || []
+			if (voices.length === 1) {
+				converted = `%%score ( ${voices[0]} )\n${converted}`
+			}
+		}
+		return converted
+	}
+
 	const hasAbcxBody = (source) => {
 		const lines = (source || "").replace(/\r\n/g, "\n").split("\n")
 		let inBody = false
@@ -963,8 +988,8 @@
 		return false
 	}
 
-	const abcToAbcx = (source) => {
-		if (hasAbcxBody(source)) return source
+	const abcToAbcx = (source, options = {}) => {
+		if (!options.force && hasAbcxBody(source)) return source
 
 		const normalized = (source || "").replace(/\r\n/g, "\n")
 		const allLines = normalized.split("\n")
@@ -1188,23 +1213,25 @@
 				continue
 			}
 
-			// Phrase marker (H1, H2, etc.)
-			const phraseMatch = line.match(/^H(\d+)$/)
+			// Phrase marker: legacy H1 / H2 or token-style <H><V001>
+			const phraseMatch = line.match(/^H(\d+)$/) || line.match(/^<H><V(\d{3})>$/)
 			if (phraseMatch) {
 				if (currentPhrase) {
 					phrases.push(currentPhrase)
 				}
 				currentPhrase = {
-					id: line,
+					id: line.match(/^H\d+$/) ? line : `H${parseInt(phraseMatch[1], 10)}`,
 					measures: []
 				}
 				continue
 			}
 
-			// Measure line (M1\t..., M2\t..., etc.)
-			const measureMatch = line.match(/^M(\d+)\t(.+)$/)
+			// Measure line: legacy M1 <content> or token-style <M><V003>\t<content>
+			const measureMatch =
+				line.match(/^M(\d+)\s+(.+)$/) ||
+				line.match(/^<M><V(\d{3})>\s+(.+)$/)
 			if (measureMatch && currentPhrase) {
-				const measureNum = parseInt(measureMatch[1])
+				const measureNum = parseInt(measureMatch[1], 10)
 				const content = measureMatch[2]
 
 				// Validate measure content has voice separator
@@ -1391,6 +1418,7 @@
 		normalizeAbc,
 		toStandardAbc,
 		toStandardAbcx,
-		_measureDuration: measureDuration
+		_measureDuration: measureDuration,
+		toAbciAbcx,
 	}
 })
